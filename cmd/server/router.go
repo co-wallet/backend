@@ -34,7 +34,7 @@ func newRouter(
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
 	authHandler := handler.NewAuthHandler(authSvc, userRepo)
-	accountHandler := accounthandler.New(accountSvc)
+	accountHandler := accounthandler.New(accountSvc, userRepo)
 	categoryHandler := categoryhandler.New(categorySvc)
 	transactionHandler := transactionhandler.New(transactionSvc)
 	tagHandler := taghandler.New(tagSvc)

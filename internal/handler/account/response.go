@@ -2,6 +2,14 @@ package accounthandler
 
 import "github.com/co-wallet/backend/internal/model"
 
+type BalanceResponse struct {
+	Native          float64 `json:"native"`
+	Display         float64 `json:"display"`
+	TotalNative     float64 `json:"totalNative"`
+	TotalDisplay    float64 `json:"totalDisplay"`
+	DisplayCurrency string  `json:"displayCurrency"`
+}
+
 type AccountResponse struct {
 	ID                 string           `json:"id"`
 	OwnerID            string           `json:"ownerId"`
@@ -13,6 +21,7 @@ type AccountResponse struct {
 	InitialBalance     float64          `json:"initialBalance"`
 	InitialBalanceDate *string          `json:"initialBalanceDate"`
 	Members            []MemberResponse `json:"members,omitempty"`
+	Balance            *BalanceResponse `json:"balance,omitempty"`
 }
 
 type MemberResponse struct {

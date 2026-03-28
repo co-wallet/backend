@@ -12,14 +12,38 @@ import (
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
+
+	currency := r.URL.Query().Get("currency")
+	if currency == "" {
+		if u, err := h.users.GetByID(r.Context(), userID); err == nil {
+			currency = u.DefaultCurrency
+		}
+	}
+
 	accounts, err := h.service.ListByUser(r.Context(), userID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
+
+	balances, err := h.service.ListBalancesByUser(r.Context(), userID, currency)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
 	resp := make([]AccountResponse, len(accounts))
 	for i, a := range accounts {
 		resp[i] = toAccountResponse(a)
+		if b, ok := balances[a.ID]; ok {
+			resp[i].Balance = &BalanceResponse{
+				Native:          b.BalanceNative,
+				Display:         b.BalanceDisplay,
+				TotalNative:     b.TotalNative,
+				TotalDisplay:    b.TotalDisplay,
+				DisplayCurrency: currency,
+			}
+		}
 	}
 	jsonResponse(w, resp, http.StatusOK)
 }

@@ -146,6 +146,61 @@ func (r *AccountRepository) RemoveMember(ctx context.Context, accountID, userID 
 	return err
 }
 
+// ListBalancesByUser returns per-account balance breakdown for all accounts the user
+// owns or belongs to. Amounts are converted to displayCurrency using USD-pivot rates.
+func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error) {
+	q := fmt.Sprintf(`
+		WITH per_account AS (
+		    SELECT
+		        a.id,
+		        a.currency,
+		        a.initial_balance
+		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
+		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
+		            + COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		        AS balance_native,
+		        a.initial_balance
+		            + COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
+		        AS total_native
+		    FROM accounts a
+		    LEFT JOIN transactions t ON t.account_id = a.id
+		    LEFT JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
+		    WHERE a.deleted_at IS NULL
+		      AND (a.owner_id = $1 OR EXISTS (
+		               SELECT 1 FROM account_members am
+		               WHERE am.account_id = a.id AND am.user_id = $1))
+		    GROUP BY a.id, a.currency, a.initial_balance
+		)
+		SELECT
+		    id,
+		    balance_native,
+		    %s AS balance_display,
+		    total_native,
+		    %s AS total_display
+		FROM per_account`,
+		convertExpr("balance_native", "currency", 2),
+		convertExpr("total_native", "currency", 2),
+	)
+
+	rows, err := r.db.Query(ctx, q, userID, displayCurrency)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]model.AccountBalance)
+	for rows.Next() {
+		var b model.AccountBalance
+		if err = rows.Scan(&b.AccountID, &b.BalanceNative, &b.BalanceDisplay, &b.TotalNative, &b.TotalDisplay); err != nil {
+			return nil, err
+		}
+		result[b.AccountID] = b
+	}
+	return result, rows.Err()
+}
+
 func (r *AccountRepository) IsMember(ctx context.Context, accountID, userID string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx, `

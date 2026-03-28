@@ -34,6 +34,15 @@ type AccountMember struct {
 	DefaultShare float64 `json:"defaultShare"`
 }
 
+// AccountBalance holds computed balance fields for one account.
+type AccountBalance struct {
+	AccountID      string
+	BalanceNative  float64 // user's share in account's native currency
+	BalanceDisplay float64 // user's share in display currency
+	TotalNative    float64 // all-member total in account's native currency
+	TotalDisplay   float64 // all-member total in display currency
+}
+
 // Request DTOs
 
 type CreateAccountReq struct {

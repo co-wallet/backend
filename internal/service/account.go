@@ -24,6 +24,10 @@ func (s *AccountService) ListByUser(ctx context.Context, userID string) ([]model
 	return s.accounts.ListByUser(ctx, userID)
 }
 
+func (s *AccountService) ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error) {
+	return s.accounts.ListBalancesByUser(ctx, userID, displayCurrency)
+}
+
 func (s *AccountService) GetByID(ctx context.Context, accountID string) (model.Account, error) {
 	return s.accounts.GetByID(ctx, accountID)
 }
