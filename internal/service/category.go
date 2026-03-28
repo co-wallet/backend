@@ -10,11 +10,14 @@ import (
 	"github.com/co-wallet/backend/internal/repository"
 )
 
-type categoryRepo interface {
-	Create(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error)
+// CategoryRepo is the repository interface consumed by CategoryService.
+//
+//go:generate mockgen -destination=mocks/mock_category_repo.go -package=mocks github.com/co-wallet/backend/internal/service CategoryRepo
+type CategoryRepo interface {
+	Create(ctx context.Context, c model.Category) (model.Category, error)
 	GetByID(ctx context.Context, id, userID string) (model.Category, error)
 	ListByUser(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error)
-	Update(ctx context.Context, id, userID string, req model.UpdateCategoryReq) (model.Category, error)
+	Update(ctx context.Context, c model.Category) (model.Category, error)
 	HasChildren(ctx context.Context, id string) (bool, error)
 	HasTransactions(ctx context.Context, id string) (bool, error)
 	SoftDelete(ctx context.Context, id, userID string) error
@@ -22,7 +25,7 @@ type categoryRepo interface {
 }
 
 type CategoryService struct {
-	repo categoryRepo
+	repo CategoryRepo
 }
 
 func NewCategoryService(repo *repository.CategoryRepository) *CategoryService {
@@ -52,7 +55,13 @@ func (s *CategoryService) Create(ctx context.Context, userID string, req model.C
 			return model.Category{}, fmt.Errorf("parent category type mismatch: %w", apperr.ErrValidation)
 		}
 	}
-	return s.repo.Create(ctx, userID, req)
+	return s.repo.Create(ctx, model.Category{
+		UserID:   userID,
+		ParentID: req.ParentID,
+		Name:     req.Name,
+		Type:     req.Type,
+		Icon:     req.Icon,
+	})
 }
 
 func (s *CategoryService) List(ctx context.Context, userID string, catType model.CategoryType) ([]CategoryNode, error) {
@@ -68,14 +77,21 @@ func (s *CategoryService) List(ctx context.Context, userID string, catType model
 }
 
 func (s *CategoryService) Update(ctx context.Context, userID, id string, req model.UpdateCategoryReq) (model.Category, error) {
+	existing, err := s.repo.GetByID(ctx, id, userID)
+	if err != nil {
+		return model.Category{}, err
+	}
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
 			return model.Category{}, fmt.Errorf("name cannot be empty: %w", apperr.ErrValidation)
 		}
-		req.Name = &name
+		existing.Name = name
 	}
-	return s.repo.Update(ctx, id, userID, req)
+	if req.Icon != nil {
+		existing.Icon = req.Icon
+	}
+	return s.repo.Update(ctx, existing)
 }
 
 func (s *CategoryService) Delete(ctx context.Context, userID, id string) error {

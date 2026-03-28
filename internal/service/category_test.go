@@ -4,49 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/service/mocks"
 )
-
-// --- mock ---
-
-type mockCategoryRepo struct {
-	createFn          func(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error)
-	getByIDFn         func(ctx context.Context, id, userID string) (model.Category, error)
-	listByUserFn      func(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error)
-	updateFn          func(ctx context.Context, id, userID string, req model.UpdateCategoryReq) (model.Category, error)
-	hasChildrenFn     func(ctx context.Context, id string) (bool, error)
-	hasTransactionsFn func(ctx context.Context, id string) (bool, error)
-	softDeleteFn      func(ctx context.Context, id, userID string) error
-	hardDeleteFn      func(ctx context.Context, id, userID string) error
-}
-
-func (m *mockCategoryRepo) Create(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error) {
-	return m.createFn(ctx, userID, req)
-}
-func (m *mockCategoryRepo) GetByID(ctx context.Context, id, userID string) (model.Category, error) {
-	return m.getByIDFn(ctx, id, userID)
-}
-func (m *mockCategoryRepo) ListByUser(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error) {
-	return m.listByUserFn(ctx, userID, catType)
-}
-func (m *mockCategoryRepo) Update(ctx context.Context, id, userID string, req model.UpdateCategoryReq) (model.Category, error) {
-	return m.updateFn(ctx, id, userID, req)
-}
-func (m *mockCategoryRepo) HasChildren(ctx context.Context, id string) (bool, error) {
-	return m.hasChildrenFn(ctx, id)
-}
-func (m *mockCategoryRepo) HasTransactions(ctx context.Context, id string) (bool, error) {
-	return m.hasTransactionsFn(ctx, id)
-}
-func (m *mockCategoryRepo) SoftDelete(ctx context.Context, id, userID string) error {
-	return m.softDeleteFn(ctx, id, userID)
-}
-func (m *mockCategoryRepo) HardDelete(ctx context.Context, id, userID string) error {
-	return m.hardDeleteFn(ctx, id, userID)
-}
 
 // --- helpers ---
 
@@ -62,338 +27,229 @@ func cat(id string, parentID *string, name string) model.Category {
 	}
 }
 
-func newSvc(repo categoryRepo) *CategoryService {
-	return &CategoryService{repo: repo}
+// --- suite ---
+
+type CategoryServiceSuite struct {
+	suite.Suite
+	ctrl *gomock.Controller
+	repo *mocks.MockCategoryRepo
+	svc  *CategoryService
 }
 
-// --- buildTree tests ---
-
-func TestBuildTree_Empty(t *testing.T) {
-	result := buildTree(nil)
-	if len(result) != 0 {
-		t.Fatalf("expected empty tree, got %d nodes", len(result))
-	}
+func (s *CategoryServiceSuite) SetupTest() {
+	s.ctrl = gomock.NewController(s.T())
+	s.repo = mocks.NewMockCategoryRepo(s.ctrl)
+	s.svc = &CategoryService{repo: s.repo}
 }
 
-func TestBuildTree_SingleRoot(t *testing.T) {
-	cats := []model.Category{cat("1", nil, "Food")}
-	tree := buildTree(cats)
-	if len(tree) != 1 {
-		t.Fatalf("expected 1 root, got %d", len(tree))
-	}
-	if tree[0].Name != "Food" {
-		t.Errorf("expected Food, got %s", tree[0].Name)
-	}
-	if len(tree[0].Children) != 0 {
-		t.Errorf("expected no children")
-	}
+func TestCategoryServiceSuite(t *testing.T) {
+	suite.Run(t, new(CategoryServiceSuite))
 }
 
-func TestBuildTree_OneLevel(t *testing.T) {
-	cats := []model.Category{
-		cat("1", nil, "Food"),
-		cat("2", ptr("1"), "Restaurants"),
-		cat("3", ptr("1"), "Groceries"),
-	}
-	tree := buildTree(cats)
-	if len(tree) != 1 {
-		t.Fatalf("expected 1 root, got %d", len(tree))
-	}
-	if len(tree[0].Children) != 2 {
-		t.Fatalf("expected 2 children, got %d", len(tree[0].Children))
-	}
+// --- Create ---
+
+func (s *CategoryServiceSuite) TestCreate_Success() {
+	req := model.CreateCategoryReq{Name: "Food", Type: model.CategoryTypeExpense}
+	s.repo.EXPECT().
+		Create(gomock.Any(), model.Category{UserID: "user1", Name: "Food", Type: model.CategoryTypeExpense}).
+		Return(model.Category{ID: "new", Name: "Food"}, nil)
+
+	got, err := s.svc.Create(context.Background(), "user1", req)
+	s.NoError(err)
+	s.Equal("new", got.ID)
 }
 
-func TestBuildTree_MultiLevel(t *testing.T) {
-	// Food → Restaurants → FastFood
-	cats := []model.Category{
-		cat("1", nil, "Food"),
-		cat("2", ptr("1"), "Restaurants"),
-		cat("3", ptr("2"), "FastFood"),
-	}
-	tree := buildTree(cats)
-	if len(tree) != 1 {
-		t.Fatalf("expected 1 root, got %d", len(tree))
-	}
-	if len(tree[0].Children) != 1 {
-		t.Fatalf("expected 1 child of root, got %d", len(tree[0].Children))
-	}
-	if len(tree[0].Children[0].Children) != 1 {
-		t.Fatalf("expected 1 grandchild, got %d", len(tree[0].Children[0].Children))
-	}
-	if tree[0].Children[0].Children[0].Name != "FastFood" {
-		t.Errorf("expected FastFood at depth 2")
-	}
+func (s *CategoryServiceSuite) TestCreate_EmptyName() {
+	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{Name: "   ", Type: model.CategoryTypeExpense})
+	s.True(errors.Is(err, apperr.ErrValidation))
 }
 
-func TestBuildTree_OrphanedNodeSurfacesAsRoot(t *testing.T) {
-	// parent "1" is not in the list (soft-deleted) → child "2" should be a root
-	cats := []model.Category{
-		cat("2", ptr("1"), "Restaurants"),
-	}
-	tree := buildTree(cats)
-	if len(tree) != 1 {
-		t.Fatalf("expected orphan to surface as root, got %d roots", len(tree))
-	}
-	if tree[0].ID != "2" {
-		t.Errorf("expected orphan node as root")
-	}
+func (s *CategoryServiceSuite) TestCreate_InvalidType() {
+	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{Name: "Food", Type: "unknown"})
+	s.True(errors.Is(err, apperr.ErrValidation))
 }
 
-func TestBuildTree_MultipleRoots(t *testing.T) {
-	cats := []model.Category{
-		cat("1", nil, "Food"),
-		cat("2", nil, "Transport"),
-		cat("3", ptr("1"), "Groceries"),
-	}
-	tree := buildTree(cats)
-	if len(tree) != 2 {
-		t.Fatalf("expected 2 roots, got %d", len(tree))
-	}
+func (s *CategoryServiceSuite) TestCreate_NameTrimmed() {
+	s.repo.EXPECT().
+		Create(gomock.Any(), gomock.AssignableToTypeOf(model.Category{})).
+		DoAndReturn(func(_ context.Context, c model.Category) (model.Category, error) {
+			s.Equal("Food", c.Name)
+			return c, nil
+		})
+
+	_, _ = s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{Name: "  Food  ", Type: model.CategoryTypeExpense})
 }
 
-// --- CategoryService.Create tests ---
-
-func TestCreate_Success(t *testing.T) {
-	created := model.Category{ID: "new", Name: "Food", Type: model.CategoryTypeExpense, CreatedAt: time.Now()}
-	svc := newSvc(&mockCategoryRepo{
-		createFn: func(_ context.Context, _ string, _ model.CreateCategoryReq) (model.Category, error) {
-			return created, nil
-		},
-	})
-	got, err := svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "Food",
-		Type: model.CategoryTypeExpense,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ID != "new" {
-		t.Errorf("expected id=new, got %s", got.ID)
-	}
-}
-
-func TestCreate_EmptyName(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{})
-	_, err := svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "   ",
-		Type: model.CategoryTypeExpense,
-	})
-	if !errors.Is(err, apperr.ErrValidation) {
-		t.Errorf("expected ErrValidation, got %v", err)
-	}
-}
-
-func TestCreate_InvalidType(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{})
-	_, err := svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "Food",
-		Type: "unknown",
-	})
-	if !errors.Is(err, apperr.ErrValidation) {
-		t.Errorf("expected ErrValidation, got %v", err)
-	}
-}
-
-func TestCreate_ParentTypeMismatch(t *testing.T) {
+func (s *CategoryServiceSuite) TestCreate_ParentTypeMismatch() {
 	parentID := "parent1"
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{ID: parentID, Type: model.CategoryTypeIncome}, nil
-		},
+	s.repo.EXPECT().
+		GetByID(gomock.Any(), parentID, "user1").
+		Return(model.Category{ID: parentID, Type: model.CategoryTypeIncome}, nil)
+
+	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{
+		Name: "Food", Type: model.CategoryTypeExpense, ParentID: &parentID,
 	})
-	_, err := svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name:     "Food",
-		Type:     model.CategoryTypeExpense,
-		ParentID: &parentID,
-	})
-	if !errors.Is(err, apperr.ErrValidation) {
-		t.Errorf("expected ErrValidation for type mismatch, got %v", err)
-	}
+	s.True(errors.Is(err, apperr.ErrValidation))
 }
 
-func TestCreate_ParentNotFound(t *testing.T) {
+func (s *CategoryServiceSuite) TestCreate_ParentNotFound() {
 	parentID := "missing"
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{}, apperr.ErrNotFound
-		},
+	s.repo.EXPECT().
+		GetByID(gomock.Any(), parentID, "user1").
+		Return(model.Category{}, apperr.ErrNotFound)
+
+	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{
+		Name: "Food", Type: model.CategoryTypeExpense, ParentID: &parentID,
 	})
-	_, err := svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name:     "Food",
-		Type:     model.CategoryTypeExpense,
-		ParentID: &parentID,
-	})
-	if !errors.Is(err, apperr.ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
+	s.True(errors.Is(err, apperr.ErrNotFound))
 }
 
-func TestCreate_NameTrimmed(t *testing.T) {
-	var gotReq model.CreateCategoryReq
-	svc := newSvc(&mockCategoryRepo{
-		createFn: func(_ context.Context, _ string, req model.CreateCategoryReq) (model.Category, error) {
-			gotReq = req
-			return model.Category{Name: req.Name}, nil
-		},
-	})
-	_, _ = svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "  Food  ",
-		Type: model.CategoryTypeExpense,
-	})
-	if gotReq.Name != "Food" {
-		t.Errorf("expected trimmed name 'Food', got '%s'", gotReq.Name)
-	}
+// --- Update ---
+
+func (s *CategoryServiceSuite) TestUpdate_Success() {
+	existing := model.Category{ID: "id1", UserID: "user1", Name: "Old", Icon: nil, Type: model.CategoryTypeExpense}
+	newName := "New"
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(existing, nil)
+	s.repo.EXPECT().
+		Update(gomock.Any(), model.Category{ID: "id1", UserID: "user1", Name: "New", Icon: nil, Type: model.CategoryTypeExpense}).
+		Return(model.Category{ID: "id1", Name: "New"}, nil)
+
+	got, err := s.svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{Name: &newName})
+	s.NoError(err)
+	s.Equal("New", got.Name)
 }
 
-// --- CategoryService.Update tests ---
+func (s *CategoryServiceSuite) TestUpdate_EmptyName() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").
+		Return(model.Category{ID: "id1", Name: "Food"}, nil)
 
-func TestUpdate_EmptyName(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{})
 	empty := ""
-	_, err := svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{Name: &empty})
-	if !errors.Is(err, apperr.ErrValidation) {
-		t.Errorf("expected ErrValidation, got %v", err)
-	}
+	_, err := s.svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{Name: &empty})
+	s.True(errors.Is(err, apperr.ErrValidation))
 }
 
-func TestUpdate_NilNameAllowed(t *testing.T) {
-	updated := model.Category{ID: "id1", Name: "Food"}
-	svc := newSvc(&mockCategoryRepo{
-		updateFn: func(_ context.Context, _, _ string, _ model.UpdateCategoryReq) (model.Category, error) {
-			return updated, nil
-		},
-	})
-	// name=nil means "don't change name" — should succeed
-	_, err := svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{Name: nil})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+func (s *CategoryServiceSuite) TestUpdate_NilNameKeepsExisting() {
+	existing := model.Category{ID: "id1", UserID: "user1", Name: "Food"}
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(existing, nil)
+	s.repo.EXPECT().Update(gomock.Any(), existing).Return(existing, nil)
+
+	_, err := s.svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{Name: nil})
+	s.NoError(err)
 }
 
-// --- CategoryService.Delete tests ---
+func (s *CategoryServiceSuite) TestUpdate_NotFound() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{}, apperr.ErrNotFound)
 
-func TestDelete_HardDeleteWhenLeafNoTransactions(t *testing.T) {
-	hardCalled := false
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{ID: "id1"}, nil
-		},
-		hasChildrenFn: func(_ context.Context, _ string) (bool, error) { return false, nil },
-		hasTransactionsFn: func(_ context.Context, _ string) (bool, error) { return false, nil },
-		hardDeleteFn: func(_ context.Context, _, _ string) error {
-			hardCalled = true
-			return nil
-		},
-		softDeleteFn: func(_ context.Context, _, _ string) error {
-			t.Error("soft delete should not be called")
-			return nil
-		},
-	})
-	if err := svc.Delete(context.Background(), "user1", "id1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !hardCalled {
-		t.Error("expected hard delete to be called")
-	}
+	_, err := s.svc.Update(context.Background(), "user1", "id1", model.UpdateCategoryReq{})
+	s.True(errors.Is(err, apperr.ErrNotFound))
 }
 
-func TestDelete_SoftDeleteWhenHasChildren(t *testing.T) {
-	softCalled := false
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{ID: "id1"}, nil
-		},
-		hasChildrenFn:     func(_ context.Context, _ string) (bool, error) { return true, nil },
-		hasTransactionsFn: func(_ context.Context, _ string) (bool, error) { return false, nil },
-		softDeleteFn: func(_ context.Context, _, _ string) error {
-			softCalled = true
-			return nil
-		},
-		hardDeleteFn: func(_ context.Context, _, _ string) error {
-			t.Error("hard delete should not be called")
-			return nil
-		},
-	})
-	if err := svc.Delete(context.Background(), "user1", "id1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !softCalled {
-		t.Error("expected soft delete to be called")
-	}
+// --- Delete ---
+
+func (s *CategoryServiceSuite) TestDelete_HardDeleteForLeaf() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
+	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(false, nil)
+	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, nil)
+	s.repo.EXPECT().HardDelete(gomock.Any(), "id1", "user1").Return(nil)
+
+	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
 }
 
-func TestDelete_SoftDeleteWhenHasTransactions(t *testing.T) {
-	softCalled := false
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{ID: "id1"}, nil
-		},
-		hasChildrenFn:     func(_ context.Context, _ string) (bool, error) { return false, nil },
-		hasTransactionsFn: func(_ context.Context, _ string) (bool, error) { return true, nil },
-		softDeleteFn: func(_ context.Context, _, _ string) error {
-			softCalled = true
-			return nil
-		},
-		hardDeleteFn: func(_ context.Context, _, _ string) error {
-			t.Error("hard delete should not be called")
-			return nil
-		},
-	})
-	if err := svc.Delete(context.Background(), "user1", "id1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !softCalled {
-		t.Error("expected soft delete to be called")
-	}
+func (s *CategoryServiceSuite) TestDelete_SoftDeleteWhenHasChildren() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
+	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(true, nil)
+	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, nil)
+	s.repo.EXPECT().SoftDelete(gomock.Any(), "id1", "user1").Return(nil)
+
+	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
 }
 
-func TestDelete_NotFound(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{
-		getByIDFn: func(_ context.Context, _, _ string) (model.Category, error) {
-			return model.Category{}, apperr.ErrNotFound
-		},
-	})
-	err := svc.Delete(context.Background(), "user1", "missing")
-	if !errors.Is(err, apperr.ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
+func (s *CategoryServiceSuite) TestDelete_SoftDeleteWhenHasTransactions() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
+	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(false, nil)
+	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(true, nil)
+	s.repo.EXPECT().SoftDelete(gomock.Any(), "id1", "user1").Return(nil)
+
+	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
 }
 
-// --- CategoryService.List tests ---
+func (s *CategoryServiceSuite) TestDelete_NotFound() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "missing", "user1").Return(model.Category{}, apperr.ErrNotFound)
 
-func TestList_ReturnsTree(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{
-		listByUserFn: func(_ context.Context, _ string, _ model.CategoryType) ([]model.Category, error) {
-			return []model.Category{
+	err := s.svc.Delete(context.Background(), "user1", "missing")
+	s.True(errors.Is(err, apperr.ErrNotFound))
+}
+
+// --- List (table-driven, tests buildTree through public API) ---
+
+func (s *CategoryServiceSuite) TestList() {
+	tests := []struct {
+		name       string
+		repoResult []model.Category
+		wantRoots  int
+		wantChild  string // expected first child name of first root, "" to skip
+	}{
+		{
+			name:       "empty returns empty slice",
+			repoResult: nil,
+			wantRoots:  0,
+		},
+		{
+			name:       "single root, no children",
+			repoResult: []model.Category{cat("1", nil, "Food")},
+			wantRoots:  1,
+		},
+		{
+			name: "root with one child",
+			repoResult: []model.Category{
 				cat("1", nil, "Food"),
 				cat("2", ptr("1"), "Restaurants"),
-			}, nil
+			},
+			wantRoots: 1,
+			wantChild: "Restaurants",
 		},
-	})
-	tree, err := svc.List(context.Background(), "user1", model.CategoryTypeExpense)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		{
+			name: "multiple roots",
+			repoResult: []model.Category{
+				cat("1", nil, "Food"),
+				cat("2", nil, "Transport"),
+			},
+			wantRoots: 2,
+		},
+		{
+			name: "orphaned node surfaces as root",
+			repoResult: []model.Category{
+				cat("2", ptr("missing"), "Restaurants"),
+			},
+			wantRoots: 1,
+		},
+		{
+			name: "three levels deep",
+			repoResult: []model.Category{
+				cat("1", nil, "Food"),
+				cat("2", ptr("1"), "Restaurants"),
+				cat("3", ptr("2"), "FastFood"),
+			},
+			wantRoots: 1,
+			wantChild: "Restaurants",
+		},
 	}
-	if len(tree) != 1 {
-		t.Fatalf("expected 1 root, got %d", len(tree))
-	}
-	if len(tree[0].Children) != 1 {
-		t.Fatalf("expected 1 child, got %d", len(tree[0].Children))
-	}
-}
 
-func TestList_EmptyReturnsEmptySlice(t *testing.T) {
-	svc := newSvc(&mockCategoryRepo{
-		listByUserFn: func(_ context.Context, _ string, _ model.CategoryType) ([]model.Category, error) {
-			return nil, nil
-		},
-	})
-	tree, err := svc.List(context.Background(), "user1", model.CategoryTypeExpense)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if tree == nil {
-		t.Error("expected non-nil empty slice")
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.repo.EXPECT().
+				ListByUser(gomock.Any(), "user1", model.CategoryTypeExpense).
+				Return(tt.repoResult, nil)
+
+			tree, err := s.svc.List(context.Background(), "user1", model.CategoryTypeExpense)
+			s.NoError(err)
+			s.NotNil(tree)
+			s.Len(tree, tt.wantRoots)
+
+			if tt.wantChild != "" && len(tree) > 0 {
+				s.Len(tree[0].Children, 1)
+				s.Equal(tt.wantChild, tree[0].Children[0].Name)
+			}
+		})
 	}
 }

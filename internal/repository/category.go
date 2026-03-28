@@ -21,14 +21,7 @@ func NewCategoryRepository(db *pgxpool.Pool) *CategoryRepository {
 	return &CategoryRepository{db: db}
 }
 
-func (r *CategoryRepository) Create(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error) {
-	c := model.Category{
-		UserID:   userID,
-		ParentID: req.ParentID,
-		Name:     req.Name,
-		Type:     req.Type,
-		Icon:     req.Icon,
-	}
+func (r *CategoryRepository) Create(ctx context.Context, c model.Category) (model.Category, error) {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO categories (user_id, parent_id, name, type, icon)
 		VALUES ($1, $2, $3, $4, $5)
@@ -79,18 +72,16 @@ func (r *CategoryRepository) ListByUser(ctx context.Context, userID string, catT
 	return cats, rows.Err()
 }
 
-func (r *CategoryRepository) Update(ctx context.Context, id, userID string, req model.UpdateCategoryReq) (model.Category, error) {
-	var c model.Category
+func (r *CategoryRepository) Update(ctx context.Context, c model.Category) (model.Category, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE categories
-		SET name      = COALESCE($3, name),
-		    icon      = COALESCE($4, icon)
+		SET name = $3, icon = $4
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 		RETURNING id, user_id, parent_id, name, type, icon, created_at`,
-		id, userID, req.Name, req.Icon,
+		c.ID, c.UserID, c.Name, c.Icon,
 	).Scan(&c.ID, &c.UserID, &c.ParentID, &c.Name, &c.Type, &c.Icon, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return model.Category{}, fmt.Errorf("category %s: %w", id, apperr.ErrNotFound)
+		return model.Category{}, fmt.Errorf("category %s: %w", c.ID, apperr.ErrNotFound)
 	}
 	if isUniqueViolation(err) {
 		return model.Category{}, fmt.Errorf("category with this name already exists: %w", apperr.ErrConflict)
