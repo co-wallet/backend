@@ -70,8 +70,10 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		       t.exchange_rate, t.category_id, t.description, t.date, t.include_in_balance,
 		       t.created_by, t.created_at, t.updated_at
 		FROM transactions t
-		JOIN account_members am ON am.account_id = t.account_id AND am.user_id = $1
-		WHERE 1=1`
+		JOIN accounts a ON a.id = t.account_id
+		WHERE (a.owner_id = $1 OR EXISTS (
+		    SELECT 1 FROM account_members am WHERE am.account_id = t.account_id AND am.user_id = $1
+		))`
 
 	n := 2
 	if len(f.AccountIDs) > 0 {
