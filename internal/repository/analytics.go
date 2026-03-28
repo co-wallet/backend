@@ -48,9 +48,6 @@ func convertExpr(amountExpr, fromCurrencyCol string, displayCurrencyIdx int) str
 
 func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
 	displayCurrency := f.DisplayCurrency
-	if displayCurrency == "" {
-		displayCurrency = "USD"
-	}
 
 	// --- Balance: initial balances + all-time income shares - expense shares, converted to display currency ---
 	bArgs := []any{f.UserID}
@@ -132,9 +129,6 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 
 func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsFilter) ([]model.CategoryStat, error) {
 	displayCurrency := f.DisplayCurrency
-	if displayCurrency == "" {
-		displayCurrency = "USD"
-	}
 
 	args := []any{f.UserID}
 	idx := 2
@@ -186,9 +180,6 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 
 func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter) ([]model.TagStat, error) {
 	displayCurrency := f.DisplayCurrency
-	if displayCurrency == "" {
-		displayCurrency = "USD"
-	}
 
 	args := []any{f.UserID}
 	idx := 2

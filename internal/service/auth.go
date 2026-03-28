@@ -85,6 +85,10 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
 	return s.parseToken(tokenStr)
 }
 
+func (s *AuthService) IssueTokens(u *model.User) (*TokenPair, error) {
+	return s.issueTokens(u)
+}
+
 func (s *AuthService) issueTokens(u *model.User) (*TokenPair, error) {
 	access, err := s.signToken(u, 15*time.Minute)
 	if err != nil {

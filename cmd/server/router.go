@@ -8,9 +8,11 @@ import (
 
 	"github.com/co-wallet/backend/internal/handler"
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
+	adminhandler "github.com/co-wallet/backend/internal/handler/admin"
 	analyticshandler "github.com/co-wallet/backend/internal/handler/analytics"
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	currencyhandler "github.com/co-wallet/backend/internal/handler/currency"
+	invitehandler "github.com/co-wallet/backend/internal/handler/invite"
 	taghandler "github.com/co-wallet/backend/internal/handler/tag"
 	transactionhandler "github.com/co-wallet/backend/internal/handler/transaction"
 	"github.com/co-wallet/backend/internal/middleware"
@@ -26,6 +28,8 @@ func newRouter(
 	tagSvc *service.TagService,
 	analyticsSvc *service.AnalyticsService,
 	currencySvc *service.CurrencyService,
+	adminSvc *service.AdminService,
+	inviteSvc *service.InviteService,
 	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
@@ -34,8 +38,10 @@ func newRouter(
 	categoryHandler := categoryhandler.New(categorySvc)
 	transactionHandler := transactionhandler.New(transactionSvc)
 	tagHandler := taghandler.New(tagSvc)
-	analyticsHandler := analyticshandler.New(analyticsSvc)
+	analyticsHandler := analyticshandler.New(analyticsSvc, userRepo)
 	currencyHandler := currencyhandler.New(currencySvc)
+	adminHandler := adminhandler.New(adminSvc)
+	inviteHandler := invitehandler.New(inviteSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -46,14 +52,20 @@ func newRouter(
 		r.Get("/health", handler.Health)
 
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
+			// /register removed — accounts are created via invite only
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
 		})
 
+		// Public endpoints (no auth required)
+		r.Get("/invites/{token}", inviteHandler.Validate)
+		r.Post("/invites/{token}/accept", inviteHandler.Accept)
+		r.Get("/currencies", currencyHandler.List)
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
 
+			r.Get("/users", authHandler.ListUsers)
 			r.Get("/users/me", authHandler.Me)
 			r.Patch("/users/me", authHandler.UpdateMe)
 
@@ -97,7 +109,24 @@ func newRouter(
 				r.Get("/by-tag", analyticsHandler.ByTag)
 			})
 
-			r.Get("/currencies", currencyHandler.List)
+			// Admin routes
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(middleware.Admin)
+
+				r.Get("/users", adminHandler.ListUsers)
+				r.Route("/users/{userID}", func(r chi.Router) {
+					r.Get("/", adminHandler.GetUser)
+					r.Patch("/", adminHandler.UpdateUser)
+				})
+
+				r.Get("/currencies", adminHandler.ListCurrencies)
+				r.Post("/currencies", adminHandler.CreateCurrency)
+				r.Patch("/currencies/{code}", adminHandler.UpdateCurrency)
+				r.Post("/currencies/rates/refresh", adminHandler.RefreshRates)
+
+				r.Get("/invites", inviteHandler.List)
+				r.Post("/invites", inviteHandler.Create)
+			})
 		})
 	})
 

@@ -16,6 +16,12 @@ type ExchangeRate struct {
 	FetchedAt     time.Time `json:"fetchedAt"`
 }
 
+type CurrencyPatch struct {
+	Name     *string
+	Symbol   *string
+	IsActive *bool
+}
+
 // CurrencyWithRate is returned by the API — active currency with rate relative to USD.
 type CurrencyWithRate struct {
 	Currency

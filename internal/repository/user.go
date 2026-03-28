@@ -48,6 +48,27 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 		 FROM users WHERE username = $1`, username)
 }
 
+// ListActive returns id, username, email for all active users — used for member picker.
+func (r *UserRepository) ListActive(ctx context.Context) ([]model.User, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at
+		 FROM users WHERE is_active = true ORDER BY username`)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+	var result []model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+			&u.DefaultCurrency, &u.IsAdmin, &u.IsActive, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
+}
+
 func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
