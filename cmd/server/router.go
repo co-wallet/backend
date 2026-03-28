@@ -12,6 +12,7 @@ import (
 	analyticshandler "github.com/co-wallet/backend/internal/handler/analytics"
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	currencyhandler "github.com/co-wallet/backend/internal/handler/currency"
+	invitehandler "github.com/co-wallet/backend/internal/handler/invite"
 	taghandler "github.com/co-wallet/backend/internal/handler/tag"
 	transactionhandler "github.com/co-wallet/backend/internal/handler/transaction"
 	"github.com/co-wallet/backend/internal/middleware"
@@ -28,6 +29,7 @@ func newRouter(
 	analyticsSvc *service.AnalyticsService,
 	currencySvc *service.CurrencyService,
 	adminSvc *service.AdminService,
+	inviteSvc *service.InviteService,
 	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
@@ -39,6 +41,7 @@ func newRouter(
 	analyticsHandler := analyticshandler.New(analyticsSvc, userRepo)
 	currencyHandler := currencyhandler.New(currencySvc)
 	adminHandler := adminhandler.New(adminSvc)
+	inviteHandler := invitehandler.New(inviteSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -49,10 +52,14 @@ func newRouter(
 		r.Get("/health", handler.Health)
 
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
+			// /register removed — accounts are created via invite only
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
 		})
+
+		// Public invite endpoints (no auth required)
+		r.Get("/invites/{token}", inviteHandler.Validate)
+		r.Post("/invites/{token}/accept", inviteHandler.Accept)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
@@ -116,6 +123,9 @@ func newRouter(
 				r.Post("/currencies", adminHandler.CreateCurrency)
 				r.Patch("/currencies/{code}", adminHandler.UpdateCurrency)
 				r.Post("/currencies/rates/refresh", adminHandler.RefreshRates)
+
+				r.Get("/invites", inviteHandler.List)
+				r.Post("/invites", inviteHandler.Create)
 			})
 		})
 	})

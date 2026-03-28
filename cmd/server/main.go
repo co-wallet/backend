@@ -47,6 +47,7 @@ func main() {
 	analyticsRepo := repository.NewAnalyticsRepository(pool)
 	currencyRepo := repository.NewCurrencyRepository(pool)
 	adminRepo := repository.NewAdminRepository(pool)
+	inviteRepo := repository.NewInviteRepository(pool)
 
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	accountSvc := service.NewAccountService(accountRepo, userRepo)
@@ -56,6 +57,13 @@ func main() {
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 	currencySvc := service.NewCurrencyService(currencyRepo)
 	adminSvc := service.NewAdminService(adminRepo, currencySvc)
+	inviteSvc := service.NewInviteService(inviteRepo, userRepo, authSvc, service.SMTPConfig{
+		Host: cfg.SMTPHost,
+		Port: cfg.SMTPPort,
+		User: cfg.SMTPUser,
+		Pass: cfg.SMTPPass,
+		From: cfg.SMTPFrom,
+	}, cfg.AppURL)
 
 	if err = service.SeedAdmin(ctx, userRepo, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		log.Fatalf("seed admin: %v", err)
@@ -65,7 +73,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      newRouter(authSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, userRepo, accountRepo),
+		Handler:      newRouter(authSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, inviteSvc, userRepo, accountRepo),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
