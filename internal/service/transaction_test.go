@@ -41,7 +41,7 @@ func TestTransactionServiceSuite(t *testing.T) {
 
 // --- Create ---
 
-func (s *TransactionServiceSuite) TestCreate_PersonalAccount_NoShares() {
+func (s *TransactionServiceSuite) TestCreate_PersonalAccount_SingleShare() {
 	ctx := context.Background()
 	userID := "user-1"
 	req := model.CreateTransactionReq{
@@ -54,12 +54,14 @@ func (s *TransactionServiceSuite) TestCreate_PersonalAccount_NoShares() {
 	}
 
 	s.accountRepo.EXPECT().IsMember(ctx, req.AccountID, userID).Return(true, nil)
-	// single member → no split
+	// single member → one share equal to full amount (required for analytics JOIN on transaction_shares)
 	s.repo.EXPECT().GetMemberDefaults(ctx, req.AccountID).Return([]model.AccountMember{
 		{UserID: userID, DefaultShare: 1.0},
 	}, nil)
 	s.repo.EXPECT().Create(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
-		s.Nil(tx.Shares, "single-member account should produce no shares")
+		s.Require().Len(tx.Shares, 1, "single-member account should produce one share for full amount")
+		s.Equal(userID, tx.Shares[0].UserID)
+		s.Equal(100.0, tx.Shares[0].Amount)
 		s.Equal(userID, tx.CreatedBy)
 		tx.ID = "tx-1"
 		return tx, nil
