@@ -19,6 +19,7 @@ type TransactionServiceSuite struct {
 	ctrl        *gomock.Controller
 	repo        *mocks.MockTransactionRepo
 	accountRepo *mocks.MockAccountRepoForTx
+	tagRepo     *mocks.MockTagRepo
 	svc         *TransactionService
 }
 
@@ -26,7 +27,8 @@ func (s *TransactionServiceSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.repo = mocks.NewMockTransactionRepo(s.ctrl)
 	s.accountRepo = mocks.NewMockAccountRepoForTx(s.ctrl)
-	s.svc = &TransactionService{repo: s.repo, accounts: s.accountRepo}
+	s.tagRepo = mocks.NewMockTagRepo(s.ctrl)
+	s.svc = &TransactionService{repo: s.repo, accounts: s.accountRepo, tags: s.tagRepo}
 }
 
 func (s *TransactionServiceSuite) TearDownTest() {
@@ -182,6 +184,20 @@ func (s *TransactionServiceSuite) TestCreate_TransferMissingToAccount_ReturnsVal
 
 // --- GetByID ---
 
+func (s *TransactionServiceSuite) TestGetByID_Success() {
+	ctx := context.Background()
+	userID := "user-1"
+	txID := "tx-1"
+
+	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{ID: txID, AccountID: "acc-1"}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
+
+	tx, err := s.svc.GetByID(ctx, userID, txID)
+	s.NoError(err)
+	s.Equal(txID, tx.ID)
+}
+
 func (s *TransactionServiceSuite) TestGetByID_NotMember_ReturnsForbidden() {
 	ctx := context.Background()
 	userID := "user-1"
@@ -263,6 +279,27 @@ func (s *TransactionServiceSuite) TestDelete_NotMember_ReturnsForbidden() {
 	s.True(errors.Is(err, apperr.ErrForbidden))
 }
 
+func (s *TransactionServiceSuite) TestUpdate_Success() {
+	ctx := context.Background()
+	userID := "user-1"
+	txID := "tx-1"
+	newAmount := 200.00
+
+	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{
+		ID: txID, AccountID: "acc-1", Amount: 100.00,
+	}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal(200.00, tx.Amount)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
+
+	tx, err := s.svc.Update(ctx, userID, txID, model.UpdateTransactionReq{Amount: &newAmount})
+	s.NoError(err)
+	s.Equal(200.00, tx.Amount)
+}
+
 func (s *TransactionServiceSuite) TestDelete_Success() {
 	ctx := context.Background()
 	userID := "user-1"
@@ -296,6 +333,24 @@ func (s *TransactionServiceSuite) TestList_DefaultsApplied() {
 	txs, err := s.svc.List(ctx, userID, model.TransactionFilter{})
 	s.NoError(err)
 	s.Empty(txs)
+}
+
+func (s *TransactionServiceSuite) TestList_LoadsTags() {
+	ctx := context.Background()
+	userID := "user-1"
+
+	s.repo.EXPECT().List(ctx, userID, gomock.Any()).Return([]model.Transaction{
+		{ID: "tx-1", AccountID: "acc-1"},
+		{ID: "tx-2", AccountID: "acc-1"},
+	}, nil)
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx-1").Return([]model.Tag{{ID: "t1", Name: "food"}}, nil)
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx-2").Return(nil, nil)
+
+	txs, err := s.svc.List(ctx, userID, model.TransactionFilter{})
+	s.NoError(err)
+	s.Len(txs, 2)
+	s.Len(txs[0].Tags, 1)
+	s.Equal("food", txs[0].Tags[0].Name)
 }
 
 func (s *TransactionServiceSuite) TestList_RepoError_Propagated() {
