@@ -110,6 +110,21 @@ func (r *AdminRepository) ListAllCurrencies(ctx context.Context) ([]model.Curren
 	return result, rows.Err()
 }
 
+// RateKnown returns true if the exchange_rates table already contains a rate
+// for the given currency code (quote against USD base).
+// USD itself is always considered known.
+func (r *AdminRepository) RateKnown(ctx context.Context, code string) (bool, error) {
+	if code == "USD" {
+		return true, nil
+	}
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM exchange_rates WHERE base_currency = 'USD' AND quote_currency = $1)`,
+		code,
+	).Scan(&exists)
+	return exists, err
+}
+
 func (r *AdminRepository) CreateCurrency(ctx context.Context, c model.Currency) error {
 	_, err := r.db.Exec(ctx,
 		`INSERT INTO currencies (code, name, symbol, is_active) VALUES ($1, $2, $3, $4)

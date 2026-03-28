@@ -6,6 +6,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
 )
 
@@ -14,6 +15,7 @@ type adminRepo interface {
 	GetUser(ctx context.Context, id string) (*model.User, error)
 	UpdateUser(ctx context.Context, id string, patch model.AdminUserPatch) error
 	ListAllCurrencies(ctx context.Context) ([]model.CurrencyWithRate, error)
+	RateKnown(ctx context.Context, code string) (bool, error)
 	CreateCurrency(ctx context.Context, c model.Currency) error
 	UpdateCurrency(ctx context.Context, code string, patch model.CurrencyPatch) error
 }
@@ -69,6 +71,13 @@ type CreateCurrencyReq struct {
 }
 
 func (s *AdminService) CreateCurrency(ctx context.Context, req CreateCurrencyReq) error {
+	known, err := s.repo.RateKnown(ctx, req.Code)
+	if err != nil {
+		return fmt.Errorf("check rate: %w", err)
+	}
+	if !known {
+		return fmt.Errorf("%w: currency code %q is not recognized by the exchange rate provider; check the ISO 4217 code (e.g. ILS not NIS)", apperr.ErrValidation, req.Code)
+	}
 	return s.repo.CreateCurrency(ctx, model.Currency{
 		Code:     req.Code,
 		Name:     req.Name,
