@@ -10,8 +10,19 @@ import (
 	"github.com/co-wallet/backend/internal/repository"
 )
 
+type categoryRepo interface {
+	Create(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error)
+	GetByID(ctx context.Context, id, userID string) (model.Category, error)
+	ListByUser(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error)
+	Update(ctx context.Context, id, userID string, req model.UpdateCategoryReq) (model.Category, error)
+	HasChildren(ctx context.Context, id string) (bool, error)
+	HasTransactions(ctx context.Context, id string) (bool, error)
+	SoftDelete(ctx context.Context, id, userID string) error
+	HardDelete(ctx context.Context, id, userID string) error
+}
+
 type CategoryService struct {
-	repo *repository.CategoryRepository
+	repo categoryRepo
 }
 
 func NewCategoryService(repo *repository.CategoryRepository) *CategoryService {
@@ -49,7 +60,11 @@ func (s *CategoryService) List(ctx context.Context, userID string, catType model
 	if err != nil {
 		return nil, err
 	}
-	return buildTree(cats), nil
+	tree := buildTree(cats)
+	if tree == nil {
+		tree = []CategoryNode{}
+	}
+	return tree, nil
 }
 
 func (s *CategoryService) Update(ctx context.Context, userID, id string, req model.UpdateCategoryReq) (model.Category, error) {
