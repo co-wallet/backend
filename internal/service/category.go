@@ -85,24 +85,32 @@ func (s *CategoryService) Delete(ctx context.Context, userID, id string) error {
 
 // buildTree converts a flat list of categories into a nested tree.
 func buildTree(cats []model.Category) []CategoryNode {
-	byID := make(map[string]*CategoryNode, len(cats))
-	for i := range cats {
-		node := &CategoryNode{Category: cats[i]}
-		byID[cats[i].ID] = node
+	byID := make(map[string]model.Category, len(cats))
+	childrenOf := make(map[string][]string, len(cats))
+
+	for _, c := range cats {
+		byID[c.ID] = c
+		if c.ParentID != nil {
+			childrenOf[*c.ParentID] = append(childrenOf[*c.ParentID], c.ID)
+		}
+	}
+
+	var buildNode func(id string) CategoryNode
+	buildNode = func(id string) CategoryNode {
+		node := CategoryNode{Category: byID[id]}
+		for _, childID := range childrenOf[id] {
+			node.Children = append(node.Children, buildNode(childID))
+		}
+		return node
 	}
 
 	var roots []CategoryNode
-	for i := range cats {
-		node := byID[cats[i].ID]
-		if cats[i].ParentID == nil {
-			roots = append(roots, *node)
-			continue
-		}
-		if parent, ok := byID[*cats[i].ParentID]; ok {
-			parent.Children = append(parent.Children, *node)
-		} else {
+	for _, c := range cats {
+		if c.ParentID == nil {
+			roots = append(roots, buildNode(c.ID))
+		} else if _, parentExists := byID[*c.ParentID]; !parentExists {
 			// orphaned (parent soft-deleted) — surface as root
-			roots = append(roots, *node)
+			roots = append(roots, buildNode(c.ID))
 		}
 	}
 	return roots
