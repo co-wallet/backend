@@ -20,8 +20,9 @@ type TagStat struct {
 }
 
 type AnalyticsFilter struct {
-	UserID     string
-	DateFrom   string
-	DateTo     string
-	AccountIDs []string
+	UserID          string
+	DateFrom        string
+	DateTo          string
+	AccountIDs      []string
+	DisplayCurrency string // convert all amounts to this currency (default: USD)
 }
