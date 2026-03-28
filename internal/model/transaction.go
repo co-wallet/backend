@@ -30,6 +30,7 @@ type Transaction struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Shares           []TransactionShare
+	Tags             []Tag
 }
 
 type TransactionShare struct {
@@ -52,7 +53,9 @@ type CreateTransactionReq struct {
 	Date             time.Time
 	IncludeInBalance bool
 	Shares           []ShareReq // nil = auto-calculate from member defaults
+	Tags             []string   // tag names; upserted on create
 }
+
 
 type UpdateTransactionReq struct {
 	Amount           *float64
@@ -61,6 +64,7 @@ type UpdateTransactionReq struct {
 	Date             *time.Time
 	IncludeInBalance *bool
 	Shares           []ShareReq
+	Tags             []string // nil = don't change; []string{} = clear all tags
 }
 
 type ShareReq struct {
@@ -71,6 +75,7 @@ type ShareReq struct {
 type TransactionFilter struct {
 	AccountIDs  []string
 	CategoryIDs []string
+	TagIDs      []string
 	DateFrom    *time.Time
 	DateTo      *time.Time
 	Page        int

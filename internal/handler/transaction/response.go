@@ -12,6 +12,11 @@ type ShareResponse struct {
 	IsCustom bool    `json:"isCustom"`
 }
 
+type TagResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type TransactionResponse struct {
 	ID               string          `json:"id"`
 	AccountID        string          `json:"accountId"`
@@ -27,12 +32,17 @@ type TransactionResponse struct {
 	CreatedBy        string          `json:"createdBy"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	Shares           []ShareResponse `json:"shares"`
+	Tags             []TagResponse   `json:"tags"`
 }
 
 func toTransactionResponse(tx model.Transaction) TransactionResponse {
 	shares := make([]ShareResponse, len(tx.Shares))
 	for i, s := range tx.Shares {
 		shares[i] = ShareResponse{UserID: s.UserID, Amount: s.Amount, IsCustom: s.IsCustom}
+	}
+	tags := make([]TagResponse, len(tx.Tags))
+	for i, t := range tx.Tags {
+		tags[i] = TagResponse{ID: t.ID, Name: t.Name}
 	}
 	return TransactionResponse{
 		ID:               tx.ID,
@@ -49,5 +59,6 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 		CreatedBy:        tx.CreatedBy,
 		CreatedAt:        tx.CreatedAt,
 		Shares:           shares,
+		Tags:             tags,
 	}
 }

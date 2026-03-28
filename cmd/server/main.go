@@ -43,11 +43,13 @@ func main() {
 	accountRepo := repository.NewAccountRepository(pool)
 	categoryRepo := repository.NewCategoryRepository(pool)
 	transactionRepo := repository.NewTransactionRepository(pool)
+	tagRepo := repository.NewTagRepository(pool)
 
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	accountSvc := service.NewAccountService(accountRepo, userRepo)
 	categorySvc := service.NewCategoryService(categoryRepo)
-	transactionSvc := service.NewTransactionService(transactionRepo, accountRepo)
+	tagSvc := service.NewTagService(tagRepo)
+	transactionSvc := service.NewTransactionService(transactionRepo, accountRepo, tagRepo)
 
 	if err = service.SeedAdmin(ctx, userRepo, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		log.Fatalf("seed admin: %v", err)
@@ -55,7 +57,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      newRouter(authSvc, accountSvc, categorySvc, transactionSvc, userRepo, accountRepo),
+		Handler:      newRouter(authSvc, accountSvc, categorySvc, transactionSvc, tagSvc, userRepo, accountRepo),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

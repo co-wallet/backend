@@ -14,17 +14,18 @@ type shareReq struct {
 }
 
 type createTransactionReq struct {
-	AccountID        string          `json:"accountId"`
-	ToAccountID      *string         `json:"toAccountId"`
+	AccountID        string                `json:"accountId"`
+	ToAccountID      *string               `json:"toAccountId"`
 	Type             model.TransactionType `json:"type"`
-	Amount           float64         `json:"amount"`
-	Currency         string          `json:"currency"`
-	ExchangeRate     *float64        `json:"exchangeRate"`
-	CategoryID       *string         `json:"categoryId"`
-	Description      *string         `json:"description"`
-	Date             time.Time       `json:"date"`
-	IncludeInBalance bool            `json:"includeInBalance"`
-	Shares           []shareReq      `json:"shares"`
+	Amount           float64               `json:"amount"`
+	Currency         string                `json:"currency"`
+	ExchangeRate     *float64              `json:"exchangeRate"`
+	CategoryID       *string               `json:"categoryId"`
+	Description      *string               `json:"description"`
+	Date             time.Time             `json:"date"`
+	IncludeInBalance bool                  `json:"includeInBalance"`
+	Shares           []shareReq            `json:"shares"`
+	Tags             []string              `json:"tags"`
 }
 
 func (r *createTransactionReq) validate() error {
@@ -61,6 +62,7 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 		Description:      r.Description,
 		Date:             r.Date,
 		IncludeInBalance: r.IncludeInBalance,
+		Tags:             r.Tags,
 	}
 	if len(r.Shares) > 0 {
 		req.Shares = make([]model.ShareReq, len(r.Shares))
@@ -78,6 +80,7 @@ type updateTransactionReq struct {
 	Date             *time.Time `json:"date"`
 	IncludeInBalance *bool      `json:"includeInBalance"`
 	Shares           []shareReq `json:"shares"`
+	Tags             []string   `json:"tags"`
 }
 
 func (r *updateTransactionReq) validate() error {
@@ -94,6 +97,7 @@ func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 		Description:      r.Description,
 		Date:             r.Date,
 		IncludeInBalance: r.IncludeInBalance,
+		Tags:             r.Tags,
 	}
 	if len(r.Shares) > 0 {
 		req.Shares = make([]model.ShareReq, len(r.Shares))

@@ -26,12 +26,13 @@ type AccountRepoForTx interface {
 }
 
 type TransactionService struct {
-	repo    TransactionRepo
+	repo     TransactionRepo
 	accounts AccountRepoForTx
+	tags     TagRepo
 }
 
-func NewTransactionService(repo *repository.TransactionRepository, accounts *repository.AccountRepository) *TransactionService {
-	return &TransactionService{repo: repo, accounts: accounts}
+func NewTransactionService(repo *repository.TransactionRepository, accounts *repository.AccountRepository, tags *repository.TagRepository) *TransactionService {
+	return &TransactionService{repo: repo, accounts: accounts, tags: tags}
 }
 
 func (s *TransactionService) Create(ctx context.Context, userID string, req model.CreateTransactionReq) (model.Transaction, error) {
@@ -39,7 +40,6 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		return model.Transaction{}, err
 	}
 
-	// Verify the user is a member of the account
 	isMember, err := s.accounts.IsMember(ctx, req.AccountID, userID)
 	if err != nil {
 		return model.Transaction{}, err
@@ -62,13 +62,23 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		CreatedBy:        userID,
 	}
 
-	// Calculate shares for shared accounts
 	tx.Shares, err = s.resolveShares(ctx, req)
 	if err != nil {
 		return model.Transaction{}, err
 	}
 
-	return s.repo.Create(ctx, tx)
+	tx, err = s.repo.Create(ctx, tx)
+	if err != nil {
+		return model.Transaction{}, err
+	}
+
+	if len(req.Tags) > 0 {
+		tx.Tags, err = s.tags.UpsertForTransaction(ctx, tx.ID, userID, req.Tags)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+	}
+	return tx, nil
 }
 
 func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (model.Transaction, error) {
@@ -83,7 +93,8 @@ func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (mo
 	if !isMember {
 		return model.Transaction{}, fmt.Errorf("not a member of account: %w", apperr.ErrForbidden)
 	}
-	return tx, nil
+	tx.Tags, err = s.tags.ListForTransaction(ctx, id)
+	return tx, err
 }
 
 func (s *TransactionService) List(ctx context.Context, userID string, f model.TransactionFilter) ([]model.Transaction, error) {
@@ -93,7 +104,17 @@ func (s *TransactionService) List(ctx context.Context, userID string, f model.Tr
 	if f.Page <= 0 {
 		f.Page = 1
 	}
-	return s.repo.List(ctx, userID, f)
+	txs, err := s.repo.List(ctx, userID, f)
+	if err != nil {
+		return nil, err
+	}
+	for i := range txs {
+		txs[i].Tags, err = s.tags.ListForTransaction(ctx, txs[i].ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return txs, nil
 }
 
 func (s *TransactionService) Update(ctx context.Context, userID, id string, req model.UpdateTransactionReq) (model.Transaction, error) {
@@ -133,12 +154,28 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 			return model.Transaction{}, fmt.Errorf("%w: %w", apperr.ErrValidation, err)
 		}
 		existing.Shares = make([]model.TransactionShare, len(req.Shares))
-		for i, s := range req.Shares {
-			existing.Shares[i] = model.TransactionShare{UserID: s.UserID, Amount: s.Amount, IsCustom: true}
+		for i, sh := range req.Shares {
+			existing.Shares[i] = model.TransactionShare{UserID: sh.UserID, Amount: sh.Amount, IsCustom: true}
 		}
 	}
 
-	return s.repo.Update(ctx, existing)
+	tx, err := s.repo.Update(ctx, existing)
+	if err != nil {
+		return model.Transaction{}, err
+	}
+
+	if req.Tags != nil {
+		tx.Tags, err = s.tags.UpsertForTransaction(ctx, id, userID, req.Tags)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+	} else {
+		tx.Tags, err = s.tags.ListForTransaction(ctx, id)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+	}
+	return tx, nil
 }
 
 func (s *TransactionService) Delete(ctx context.Context, userID, id string) error {
@@ -179,7 +216,6 @@ func (s *TransactionService) validateCreate(req model.CreateTransactionReq) erro
 
 func (s *TransactionService) resolveShares(ctx context.Context, req model.CreateTransactionReq) ([]model.TransactionShare, error) {
 	if req.Shares != nil {
-		// Custom shares provided — validate and use them
 		if err := validateCustomShares(req.Amount, req.Shares); err != nil {
 			return nil, fmt.Errorf("%w: %w", apperr.ErrValidation, err)
 		}
@@ -190,13 +226,11 @@ func (s *TransactionService) resolveShares(ctx context.Context, req model.Create
 		return shares, nil
 	}
 
-	// Auto-calculate from account member defaults
 	members, err := s.repo.GetMemberDefaults(ctx, req.AccountID)
 	if err != nil {
 		return nil, err
 	}
 	if len(members) <= 1 {
-		// Personal account or single member — no split needed
 		return nil, nil
 	}
 	return calculateShares(req.Amount, members)
