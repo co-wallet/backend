@@ -46,6 +46,7 @@ func main() {
 
 	// Repositories
 	userRepo := repository.NewUserRepository(pool)
+	accountRepo := repository.NewAccountRepository(pool)
 
 	// Services
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
@@ -57,6 +58,7 @@ func main() {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authSvc, userRepo)
+	accountHandler := handler.NewAccountHandler(accountRepo, userRepo)
 
 	// Router
 	r := chi.NewRouter()
@@ -77,8 +79,23 @@ func main() {
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
+
 			r.Get("/users/me", authHandler.Me)
 			r.Patch("/users/me", authHandler.UpdateMe)
+
+			// Accounts
+			r.Get("/accounts", accountHandler.List)
+			r.Post("/accounts", accountHandler.Create)
+			r.Route("/accounts/{accountID}", func(r chi.Router) {
+				r.Use(middleware.AccountMember(accountRepo))
+				r.Get("/", accountHandler.Get)
+				r.Patch("/", accountHandler.Update)
+				r.Delete("/", accountHandler.Delete)
+				r.Get("/members", accountHandler.ListMembers)
+				r.Post("/members", accountHandler.AddMember)
+				r.Patch("/members/{userID}", accountHandler.UpdateMember)
+				r.Delete("/members/{userID}", accountHandler.RemoveMember)
+			})
 		})
 	})
 
