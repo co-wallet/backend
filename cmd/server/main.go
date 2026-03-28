@@ -15,6 +15,7 @@ import (
 	"github.com/co-wallet/backend/internal/config"
 	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/handler"
+	accounthandler "github.com/co-wallet/backend/internal/handler/account"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/repository"
 	"github.com/co-wallet/backend/internal/service"
@@ -50,6 +51,7 @@ func main() {
 
 	// Services
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+	accountSvc := service.NewAccountService(accountRepo, userRepo)
 
 	// Seed admin on first launch
 	if err = service.SeedAdmin(ctx, userRepo, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword); err != nil {
@@ -58,7 +60,7 @@ func main() {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authSvc, userRepo)
-	accountHandler := handler.NewAccountHandler(accountRepo, userRepo)
+	accountHandler := accounthandler.New(accountSvc, accountRepo)
 
 	// Router
 	r := chi.NewRouter()
