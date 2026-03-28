@@ -23,10 +23,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	if tree == nil {
-		tree = []CategoryResponse{}
-	}
-	jsonResponse(w, tree, http.StatusOK)
+	jsonResponse(w, toCategoryNodeResponses(tree), http.StatusOK)
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +43,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	jsonResponse(w, cat, http.StatusCreated)
+	jsonResponse(w, toCategoryResponse(cat), http.StatusCreated)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +65,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	jsonResponse(w, cat, http.StatusOK)
+	jsonResponse(w, toCategoryResponse(cat), http.StatusOK)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

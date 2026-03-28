@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -44,7 +45,7 @@ func (r *CategoryRepository) GetByID(ctx context.Context, id, userID string) (mo
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
 		id, userID,
 	).Scan(&c.ID, &c.UserID, &c.ParentID, &c.Name, &c.Type, &c.Icon, &c.CreatedAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Category{}, fmt.Errorf("category %s: %w", id, apperr.ErrNotFound)
 	}
 	return c, err
@@ -84,7 +85,7 @@ func (r *CategoryRepository) Update(ctx context.Context, id, userID string, req 
 		RETURNING id, user_id, parent_id, name, type, icon, created_at`,
 		id, userID, req.Name, req.Icon,
 	).Scan(&c.ID, &c.UserID, &c.ParentID, &c.Name, &c.Type, &c.Icon, &c.CreatedAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Category{}, fmt.Errorf("category %s: %w", id, apperr.ErrNotFound)
 	}
 	return c, err
