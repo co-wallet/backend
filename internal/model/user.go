@@ -2,6 +2,12 @@ package model
 
 import "time"
 
+type AdminUserPatch struct {
+	IsActive     *bool
+	IsAdmin      *bool
+	PasswordHash *string
+}
+
 type User struct {
 	ID              string    `json:"id"`
 	Username        string    `json:"username"`

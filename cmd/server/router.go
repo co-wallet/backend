@@ -8,6 +8,7 @@ import (
 
 	"github.com/co-wallet/backend/internal/handler"
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
+	adminhandler "github.com/co-wallet/backend/internal/handler/admin"
 	analyticshandler "github.com/co-wallet/backend/internal/handler/analytics"
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	currencyhandler "github.com/co-wallet/backend/internal/handler/currency"
@@ -26,6 +27,7 @@ func newRouter(
 	tagSvc *service.TagService,
 	analyticsSvc *service.AnalyticsService,
 	currencySvc *service.CurrencyService,
+	adminSvc *service.AdminService,
 	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
@@ -36,6 +38,7 @@ func newRouter(
 	tagHandler := taghandler.New(tagSvc)
 	analyticsHandler := analyticshandler.New(analyticsSvc)
 	currencyHandler := currencyhandler.New(currencySvc)
+	adminHandler := adminhandler.New(adminSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -98,6 +101,22 @@ func newRouter(
 			})
 
 			r.Get("/currencies", currencyHandler.List)
+
+			// Admin routes
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(middleware.Admin)
+
+				r.Get("/users", adminHandler.ListUsers)
+				r.Route("/users/{userID}", func(r chi.Router) {
+					r.Get("/", adminHandler.GetUser)
+					r.Patch("/", adminHandler.UpdateUser)
+				})
+
+				r.Get("/currencies", adminHandler.ListCurrencies)
+				r.Post("/currencies", adminHandler.CreateCurrency)
+				r.Patch("/currencies/{code}", adminHandler.UpdateCurrency)
+				r.Post("/currencies/rates/refresh", adminHandler.RefreshRates)
+			})
 		})
 	})
 
