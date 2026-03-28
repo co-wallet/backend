@@ -26,6 +26,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if ids := r.URL.Query().Get("category_ids"); ids != "" {
 		f.CategoryIDs = strings.Split(ids, ",")
 	}
+	if ids := r.URL.Query().Get("tag_ids"); ids != "" {
+		f.TagIDs = strings.Split(ids, ",")
+	}
+	if mode := r.URL.Query().Get("tag_mode"); mode == "and" {
+		f.TagMode = "and"
+	}
 	if s := r.URL.Query().Get("date_from"); s != "" {
 		if t, err := time.Parse("2006-01-02", s); err == nil {
 			f.DateFrom = &t

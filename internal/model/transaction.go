@@ -76,6 +76,7 @@ type TransactionFilter struct {
 	AccountIDs  []string
 	CategoryIDs []string
 	TagIDs      []string
+	TagMode     string // "or" (default) or "and"
 	DateFrom    *time.Time
 	DateTo      *time.Time
 	Page        int
