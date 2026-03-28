@@ -62,7 +62,7 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		CreatedBy:        userID,
 	}
 
-	tx.Shares, err = s.resolveShares(ctx, req)
+	tx.Shares, err = s.resolveShares(ctx, req, userID)
 	if err != nil {
 		return model.Transaction{}, err
 	}
@@ -214,7 +214,7 @@ func (s *TransactionService) validateCreate(req model.CreateTransactionReq) erro
 	return nil
 }
 
-func (s *TransactionService) resolveShares(ctx context.Context, req model.CreateTransactionReq) ([]model.TransactionShare, error) {
+func (s *TransactionService) resolveShares(ctx context.Context, req model.CreateTransactionReq, createdBy string) ([]model.TransactionShare, error) {
 	if req.Shares != nil {
 		if err := validateCustomShares(req.Amount, req.Shares); err != nil {
 			return nil, fmt.Errorf("%w: %w", apperr.ErrValidation, err)
@@ -230,8 +230,9 @@ func (s *TransactionService) resolveShares(ctx context.Context, req model.Create
 	if err != nil {
 		return nil, err
 	}
+	// Personal account or shared with only one member: full amount goes to the creator.
 	if len(members) <= 1 {
-		return nil, nil
+		return []model.TransactionShare{{UserID: createdBy, Amount: req.Amount}}, nil
 	}
 	return calculateShares(req.Amount, members)
 }
