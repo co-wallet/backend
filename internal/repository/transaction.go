@@ -97,9 +97,19 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		n++
 	}
 	if len(f.TagIDs) > 0 {
-		q += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id AND tt.tag_id = ANY($%d))`, n)
-		args = append(args, f.TagIDs)
-		n++
+		if f.TagMode == "and" {
+			// Transaction must have ALL specified tags
+			for _, tagID := range f.TagIDs {
+				q += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id AND tt.tag_id = $%d)`, n)
+				args = append(args, tagID)
+				n++
+			}
+		} else {
+			// OR mode: transaction must have at least one of the tags
+			q += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id AND tt.tag_id = ANY($%d))`, n)
+			args = append(args, f.TagIDs)
+			n++
+		}
 	}
 
 	q += " ORDER BY t.date DESC, t.created_at DESC"
