@@ -65,6 +65,7 @@ func newRouter(
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
 
+			r.Get("/users", authHandler.ListUsers)
 			r.Get("/users/me", authHandler.Me)
 			r.Patch("/users/me", authHandler.UpdateMe)
 

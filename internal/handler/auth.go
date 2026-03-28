@@ -98,6 +98,26 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, u, http.StatusOK)
 }
 
+// ListUsers returns id+username+email for all active users (for member picker).
+func (h *AuthHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.users.ListActive(r.Context())
+	if err != nil {
+		jsonError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	// Return only non-sensitive fields
+	type userDTO struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	result := make([]userDTO, len(users))
+	for i, u := range users {
+		result[i] = userDTO{ID: u.ID, Username: u.Username, Email: u.Email}
+	}
+	jsonResponse(w, result, http.StatusOK)
+}
+
 func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DefaultCurrency string `json:"defaultCurrency"`
