@@ -9,14 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
-
 	"github.com/co-wallet/backend/internal/config"
 	"github.com/co-wallet/backend/internal/db"
-	"github.com/co-wallet/backend/internal/handler"
-	accounthandler "github.com/co-wallet/backend/internal/handler/account"
-	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/repository"
 	"github.com/co-wallet/backend/internal/service"
 )
@@ -45,65 +39,19 @@ func main() {
 	}
 	log.Println("migrations applied")
 
-	// Repositories
 	userRepo := repository.NewUserRepository(pool)
 	accountRepo := repository.NewAccountRepository(pool)
 
-	// Services
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	accountSvc := service.NewAccountService(accountRepo, userRepo)
 
-	// Seed admin on first launch
 	if err = service.SeedAdmin(ctx, userRepo, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		log.Fatalf("seed admin: %v", err)
 	}
 
-	// Handlers
-	authHandler := handler.NewAuthHandler(authSvc, userRepo)
-	accountHandler := accounthandler.New(accountSvc, accountRepo)
-
-	// Router
-	r := chi.NewRouter()
-	r.Use(chimw.Logger)
-	r.Use(chimw.Recoverer)
-	r.Use(chimw.RequestID)
-
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/health", handler.Health)
-
-		// Public auth routes
-		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
-			r.Post("/login", authHandler.Login)
-			r.Post("/refresh", authHandler.Refresh)
-		})
-
-		// Protected routes
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.Auth(authSvc))
-
-			r.Get("/users/me", authHandler.Me)
-			r.Patch("/users/me", authHandler.UpdateMe)
-
-			// Accounts
-			r.Get("/accounts", accountHandler.List)
-			r.Post("/accounts", accountHandler.Create)
-			r.Route("/accounts/{accountID}", func(r chi.Router) {
-				r.Use(middleware.AccountMember(accountRepo))
-				r.Get("/", accountHandler.Get)
-				r.Patch("/", accountHandler.Update)
-				r.Delete("/", accountHandler.Delete)
-				r.Get("/members", accountHandler.ListMembers)
-				r.Post("/members", accountHandler.AddMember)
-				r.Patch("/members/{userID}", accountHandler.UpdateMember)
-				r.Delete("/members/{userID}", accountHandler.RemoveMember)
-			})
-		})
-	})
-
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      r,
+		Handler:      newRouter(authSvc, accountSvc, userRepo, accountRepo),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
