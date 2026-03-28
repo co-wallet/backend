@@ -5,9 +5,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/co-wallet/backend/internal/httputil"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/repository"
 	"github.com/co-wallet/backend/internal/service"
+)
+
+var (
+	jsonResponse = httputil.JSONResponse
+	jsonError    = httputil.JSONError
 )
 
 type AuthHandler struct {

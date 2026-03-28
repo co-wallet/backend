@@ -18,7 +18,7 @@ func (r *createCategoryReq) validate() error {
 	if strings.TrimSpace(r.Name) == "" {
 		return errors.New("name is required")
 	}
-	if r.Type != model.CategoryTypeExpense && r.Type != model.CategoryTypeIncome {
+	if !r.Type.IsValid() {
 		return errors.New("type must be 'expense' or 'income'")
 	}
 	return nil

@@ -13,7 +13,7 @@ import (
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
 	catType := model.CategoryType(r.URL.Query().Get("type"))
-	if catType != model.CategoryTypeExpense && catType != model.CategoryTypeIncome {
+	if !catType.IsValid() {
 		jsonError(w, "type must be 'expense' or 'income'", http.StatusBadRequest)
 		return
 	}

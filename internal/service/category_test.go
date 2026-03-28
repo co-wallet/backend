@@ -10,12 +10,9 @@ import (
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 	"github.com/co-wallet/backend/internal/service/mocks"
 )
-
-// --- helpers ---
-
-func ptr(s string) *string { return &s }
 
 func cat(id string, parentID *string, name string) model.Category {
 	return model.Category{
@@ -203,7 +200,7 @@ func (s *CategoryServiceSuite) TestList() {
 			name: "root with one child",
 			repoResult: []model.Category{
 				cat("1", nil, "Food"),
-				cat("2", ptr("1"), "Restaurants"),
+				cat("2", ptr.To("1"), "Restaurants"),
 			},
 			wantRoots: 1,
 			wantChild: "Restaurants",
@@ -219,7 +216,7 @@ func (s *CategoryServiceSuite) TestList() {
 		{
 			name: "orphaned node surfaces as root",
 			repoResult: []model.Category{
-				cat("2", ptr("missing"), "Restaurants"),
+				cat("2", ptr.To("missing"), "Restaurants"),
 			},
 			wantRoots: 1,
 		},
@@ -227,8 +224,8 @@ func (s *CategoryServiceSuite) TestList() {
 			name: "three levels deep",
 			repoResult: []model.Category{
 				cat("1", nil, "Food"),
-				cat("2", ptr("1"), "Restaurants"),
-				cat("3", ptr("2"), "FastFood"),
+				cat("2", ptr.To("1"), "Restaurants"),
+				cat("3", ptr.To("2"), "FastFood"),
 			},
 			wantRoots: 1,
 			wantChild: "Restaurants",

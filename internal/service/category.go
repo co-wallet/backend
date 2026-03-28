@@ -43,7 +43,7 @@ func (s *CategoryService) Create(ctx context.Context, userID string, req model.C
 	if req.Name == "" {
 		return model.Category{}, fmt.Errorf("name is required: %w", apperr.ErrValidation)
 	}
-	if req.Type != model.CategoryTypeExpense && req.Type != model.CategoryTypeIncome {
+	if !req.Type.IsValid() {
 		return model.Category{}, fmt.Errorf("type must be expense or income: %w", apperr.ErrValidation)
 	}
 	if req.ParentID != nil {
