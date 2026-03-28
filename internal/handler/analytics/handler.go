@@ -50,10 +50,11 @@ func parseFilter(r *http.Request, userID string) model.AnalyticsFilter {
 	}
 
 	return model.AnalyticsFilter{
-		UserID:     userID,
-		DateFrom:   dateFrom,
-		DateTo:     dateTo,
-		AccountIDs: accountIDs,
+		UserID:          userID,
+		DateFrom:        dateFrom,
+		DateTo:          dateTo,
+		AccountIDs:      accountIDs,
+		DisplayCurrency: q.Get("currency"),
 	}
 }
 
