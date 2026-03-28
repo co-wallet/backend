@@ -57,9 +57,10 @@ func newRouter(
 			r.Post("/refresh", authHandler.Refresh)
 		})
 
-		// Public invite endpoints (no auth required)
+		// Public endpoints (no auth required)
 		r.Get("/invites/{token}", inviteHandler.Validate)
 		r.Post("/invites/{token}/accept", inviteHandler.Accept)
+		r.Get("/currencies", currencyHandler.List)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
@@ -106,8 +107,6 @@ func newRouter(
 				r.Get("/by-category", analyticsHandler.ByCategory)
 				r.Get("/by-tag", analyticsHandler.ByTag)
 			})
-
-			r.Get("/currencies", currencyHandler.List)
 
 			// Admin routes
 			r.Route("/admin", func(r chi.Router) {
