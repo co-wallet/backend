@@ -8,6 +8,7 @@ import (
 
 	"github.com/co-wallet/backend/internal/handler"
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
+	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/repository"
 	"github.com/co-wallet/backend/internal/service"
@@ -16,11 +17,13 @@ import (
 func newRouter(
 	authSvc *service.AuthService,
 	accountSvc *service.AccountService,
+	categorySvc *service.CategoryService,
 	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
 	authHandler := handler.NewAuthHandler(authSvc, userRepo)
 	accountHandler := accounthandler.New(accountSvc)
+	categoryHandler := categoryhandler.New(categorySvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -41,6 +44,13 @@ func newRouter(
 
 			r.Get("/users/me", authHandler.Me)
 			r.Patch("/users/me", authHandler.UpdateMe)
+
+			r.Get("/categories", categoryHandler.List)
+			r.Post("/categories", categoryHandler.Create)
+			r.Route("/categories/{categoryID}", func(r chi.Router) {
+				r.Patch("/", categoryHandler.Update)
+				r.Delete("/", categoryHandler.Delete)
+			})
 
 			r.Get("/accounts", accountHandler.List)
 			r.Post("/accounts", accountHandler.Create)

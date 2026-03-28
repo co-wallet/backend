@@ -1,4 +1,4 @@
-package accounthandler
+package categoryhandler
 
 import (
 	"github.com/co-wallet/backend/internal/httputil"
@@ -6,10 +6,10 @@ import (
 )
 
 type Handler struct {
-	service *service.AccountService
+	service *service.CategoryService
 }
 
-func New(svc *service.AccountService) *Handler {
+func New(svc *service.CategoryService) *Handler {
 	return &Handler{service: svc}
 }
 
