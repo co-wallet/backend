@@ -69,11 +69,15 @@ func (s *CategoryService) Delete(ctx context.Context, userID, id string) error {
 		return err
 	}
 
+	hasChildren, err := s.repo.HasChildren(ctx, id)
+	if err != nil {
+		return err
+	}
 	hasTransactions, err := s.repo.HasTransactions(ctx, id)
 	if err != nil {
 		return err
 	}
-	if hasTransactions {
+	if hasChildren || hasTransactions {
 		return s.repo.SoftDelete(ctx, id, userID)
 	}
 	return s.repo.HardDelete(ctx, id, userID)

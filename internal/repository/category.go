@@ -91,6 +91,15 @@ func (r *CategoryRepository) Update(ctx context.Context, id, userID string, req 
 	return c, err
 }
 
+// HasChildren returns true if the category has active (non-deleted) subcategories.
+func (r *CategoryRepository) HasChildren(ctx context.Context, id string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM categories WHERE parent_id = $1 AND deleted_at IS NULL)`, id,
+	).Scan(&exists)
+	return exists, err
+}
+
 // HasTransactions returns true if the category (or any of its descendants) has linked transactions.
 // NOTE: always returns false until Phase 4 adds the transactions table.
 func (r *CategoryRepository) HasTransactions(_ context.Context, _ string) (bool, error) {
