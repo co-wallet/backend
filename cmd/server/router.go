@@ -8,6 +8,7 @@ import (
 
 	"github.com/co-wallet/backend/internal/handler"
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
+	analyticshandler "github.com/co-wallet/backend/internal/handler/analytics"
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	taghandler "github.com/co-wallet/backend/internal/handler/tag"
 	transactionhandler "github.com/co-wallet/backend/internal/handler/transaction"
@@ -22,6 +23,7 @@ func newRouter(
 	categorySvc *service.CategoryService,
 	transactionSvc *service.TransactionService,
 	tagSvc *service.TagService,
+	analyticsSvc *service.AnalyticsService,
 	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
@@ -30,6 +32,7 @@ func newRouter(
 	categoryHandler := categoryhandler.New(categorySvc)
 	transactionHandler := transactionhandler.New(transactionSvc)
 	tagHandler := taghandler.New(tagSvc)
+	analyticsHandler := analyticshandler.New(analyticsSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -83,6 +86,12 @@ func newRouter(
 			r.Route("/tags/{tagID}", func(r chi.Router) {
 				r.Patch("/", tagHandler.Rename)
 				r.Delete("/", tagHandler.Delete)
+			})
+
+			r.Route("/analytics", func(r chi.Router) {
+				r.Get("/summary", analyticsHandler.Summary)
+				r.Get("/by-category", analyticsHandler.ByCategory)
+				r.Get("/by-tag", analyticsHandler.ByTag)
 			})
 		})
 	})
