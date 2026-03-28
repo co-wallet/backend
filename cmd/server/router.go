@@ -36,7 +36,7 @@ func newRouter(
 	categoryHandler := categoryhandler.New(categorySvc)
 	transactionHandler := transactionhandler.New(transactionSvc)
 	tagHandler := taghandler.New(tagSvc)
-	analyticsHandler := analyticshandler.New(analyticsSvc)
+	analyticsHandler := analyticshandler.New(analyticsSvc, userRepo)
 	currencyHandler := currencyhandler.New(currencySvc)
 	adminHandler := adminhandler.New(adminSvc)
 

@@ -17,21 +17,25 @@ type analyticsService interface {
 	ByTag(ctx context.Context, f model.AnalyticsFilter) ([]model.TagStat, error)
 }
 
+type userSource interface {
+	GetByID(ctx context.Context, id string) (*model.User, error)
+}
+
 type Handler struct {
-	svc analyticsService
+	svc   analyticsService
+	users userSource
 }
 
-func New(svc analyticsService) *Handler {
-	return &Handler{svc: svc}
+func New(svc analyticsService, users userSource) *Handler {
+	return &Handler{svc: svc, users: users}
 }
 
-func parseFilter(r *http.Request, userID string) model.AnalyticsFilter {
+func (h *Handler) parseFilter(r *http.Request, userID string) model.AnalyticsFilter {
 	q := r.URL.Query()
 
 	dateFrom := q.Get("date_from")
 	dateTo := q.Get("date_to")
 
-	// Default: current month
 	now := time.Now()
 	if dateFrom == "" {
 		dateFrom = now.Format("2006-01") + "-01"
@@ -49,18 +53,25 @@ func parseFilter(r *http.Request, userID string) model.AnalyticsFilter {
 		}
 	}
 
+	currency := q.Get("currency")
+	if currency == "" {
+		if u, err := h.users.GetByID(r.Context(), userID); err == nil {
+			currency = u.DefaultCurrency
+		}
+	}
+
 	return model.AnalyticsFilter{
 		UserID:          userID,
 		DateFrom:        dateFrom,
 		DateTo:          dateTo,
 		AccountIDs:      accountIDs,
-		DisplayCurrency: q.Get("currency"),
+		DisplayCurrency: currency,
 	}
 }
 
 func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := parseFilter(r, userID)
+	f := h.parseFilter(r, userID)
 
 	summary, err := h.svc.Summary(r.Context(), f)
 	if err != nil {
@@ -72,7 +83,7 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ByCategory(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := parseFilter(r, userID)
+	f := h.parseFilter(r, userID)
 
 	stats, err := h.svc.ByCategory(r.Context(), f)
 	if err != nil {
@@ -84,7 +95,7 @@ func (h *Handler) ByCategory(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ByTag(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := parseFilter(r, userID)
+	f := h.parseFilter(r, userID)
 
 	stats, err := h.svc.ByTag(r.Context(), f)
 	if err != nil {
