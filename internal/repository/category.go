@@ -98,10 +98,13 @@ func (r *CategoryRepository) HasChildren(ctx context.Context, id string) (bool, 
 	return exists, err
 }
 
-// HasTransactions returns true if the category (or any of its descendants) has linked transactions.
-// NOTE: always returns false until Phase 4 adds the transactions table.
-func (r *CategoryRepository) HasTransactions(_ context.Context, _ string) (bool, error) {
-	return false, nil
+// HasTransactions returns true if the category has any linked transactions.
+func (r *CategoryRepository) HasTransactions(ctx context.Context, id string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM transactions WHERE category_id = $1)`, id,
+	).Scan(&exists)
+	return exists, err
 }
 
 func (r *CategoryRepository) SoftDelete(ctx context.Context, id, userID string) error {
