@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
@@ -34,6 +35,9 @@ func (r *CategoryRepository) Create(ctx context.Context, userID string, req mode
 		RETURNING id, created_at`,
 		c.UserID, c.ParentID, c.Name, c.Type, c.Icon,
 	).Scan(&c.ID, &c.CreatedAt)
+	if isUniqueViolation(err) {
+		return model.Category{}, fmt.Errorf("category with this name already exists: %w", apperr.ErrConflict)
+	}
 	return c, err
 }
 
@@ -88,6 +92,9 @@ func (r *CategoryRepository) Update(ctx context.Context, id, userID string, req 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Category{}, fmt.Errorf("category %s: %w", id, apperr.ErrNotFound)
 	}
+	if isUniqueViolation(err) {
+		return model.Category{}, fmt.Errorf("category with this name already exists: %w", apperr.ErrConflict)
+	}
 	return c, err
 }
 
@@ -133,4 +140,9 @@ func (r *CategoryRepository) HardDelete(ctx context.Context, id, userID string) 
 		return fmt.Errorf("category %s: %w", id, apperr.ErrNotFound)
 	}
 	return nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

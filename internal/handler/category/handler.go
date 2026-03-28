@@ -25,6 +25,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		jsonError(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, apperr.ErrValidation):
 		jsonError(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, apperr.ErrConflict):
+		jsonError(w, err.Error(), http.StatusConflict)
 	default:
 		jsonError(w, "internal server error", http.StatusInternalServerError)
 	}
