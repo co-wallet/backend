@@ -31,9 +31,6 @@ func (r *createAccountReq) validate() error {
 	if r.Type != model.AccountTypePersonal && r.Type != model.AccountTypeShared {
 		return fmt.Errorf("type must be 'personal' or 'shared'")
 	}
-	if r.InitialBalance < 0 {
-		return fmt.Errorf("initialBalance must be non-negative")
-	}
 	if r.InitialBalanceDate == "" {
 		return fmt.Errorf("initialBalanceDate is required")
 	}

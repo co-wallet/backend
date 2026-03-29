@@ -63,9 +63,9 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "negative initial balance",
-			modify:  func(r *createAccountReq) { r.InitialBalance = -0.01 },
-			wantErr: "initialBalance must be non-negative",
+			name:    "negative initial balance is valid",
+			modify:  func(r *createAccountReq) { r.InitialBalance = -500 },
+			wantErr: "",
 		},
 		{
 			name:    "zero initial balance is valid",
