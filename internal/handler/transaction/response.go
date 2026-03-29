@@ -18,21 +18,23 @@ type TagResponse struct {
 }
 
 type TransactionResponse struct {
-	ID               string          `json:"id"`
-	AccountID        string          `json:"accountId"`
-	ToAccountID      *string         `json:"toAccountId"`
-	Type             string          `json:"type"`
-	Amount           float64         `json:"amount"`
-	Currency         string          `json:"currency"`
-	ExchangeRate     *float64        `json:"exchangeRate"`
-	CategoryID       *string         `json:"categoryId"`
-	Description      *string         `json:"description"`
-	Date             time.Time       `json:"date"`
-	IncludeInBalance bool            `json:"includeInBalance"`
-	CreatedBy        string          `json:"createdBy"`
-	CreatedAt        time.Time       `json:"createdAt"`
-	Shares           []ShareResponse `json:"shares"`
-	Tags             []TagResponse   `json:"tags"`
+	ID                    string          `json:"id"`
+	AccountID             string          `json:"accountId"`
+	ToAccountID           *string         `json:"toAccountId"`
+	Type                  string          `json:"type"`
+	Amount                float64         `json:"amount"`
+	Currency              string          `json:"currency"`
+	ExchangeRate          *float64        `json:"exchangeRate"`
+	DefaultCurrency       *string         `json:"defaultCurrency"`
+	DefaultCurrencyAmount *float64        `json:"defaultCurrencyAmount"`
+	CategoryID            *string         `json:"categoryId"`
+	Description           *string         `json:"description"`
+	Date                  time.Time       `json:"date"`
+	IncludeInBalance      bool            `json:"includeInBalance"`
+	CreatedBy             string          `json:"createdBy"`
+	CreatedAt             time.Time       `json:"createdAt"`
+	Shares                []ShareResponse `json:"shares"`
+	Tags                  []TagResponse   `json:"tags"`
 }
 
 func toTransactionResponse(tx model.Transaction) TransactionResponse {
@@ -45,20 +47,22 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 		tags[i] = TagResponse{ID: t.ID, Name: t.Name}
 	}
 	return TransactionResponse{
-		ID:               tx.ID,
-		AccountID:        tx.AccountID,
-		ToAccountID:      tx.ToAccountID,
-		Type:             string(tx.Type),
-		Amount:           tx.Amount,
-		Currency:         tx.Currency,
-		ExchangeRate:     tx.ExchangeRate,
-		CategoryID:       tx.CategoryID,
-		Description:      tx.Description,
-		Date:             tx.Date,
-		IncludeInBalance: tx.IncludeInBalance,
-		CreatedBy:        tx.CreatedBy,
-		CreatedAt:        tx.CreatedAt,
-		Shares:           shares,
-		Tags:             tags,
+		ID:                    tx.ID,
+		AccountID:             tx.AccountID,
+		ToAccountID:           tx.ToAccountID,
+		Type:                  string(tx.Type),
+		Amount:                tx.Amount,
+		Currency:              tx.Currency,
+		ExchangeRate:          tx.ExchangeRate,
+		DefaultCurrency:       tx.DefaultCurrency,
+		DefaultCurrencyAmount: tx.DefaultCurrencyAmount,
+		CategoryID:            tx.CategoryID,
+		Description:           tx.Description,
+		Date:                  tx.Date,
+		IncludeInBalance:      tx.IncludeInBalance,
+		CreatedBy:             tx.CreatedBy,
+		CreatedAt:             tx.CreatedAt,
+		Shares:                shares,
+		Tags:                  tags,
 	}
 }

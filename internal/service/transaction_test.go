@@ -364,3 +364,65 @@ func (s *TransactionServiceSuite) TestList_RepoError_Propagated() {
 	_, err := s.svc.List(ctx, "user-1", model.TransactionFilter{})
 	s.ErrorIs(err, repoErr)
 }
+
+func (s *TransactionServiceSuite) TestCreate_DefaultCurrencyAmount_Stored() {
+	ctx := context.Background()
+	userID := "user-1"
+	defCur := "RUB"
+	defAmt := 9000.00
+	req := model.CreateTransactionReq{
+		AccountID:             "acc-1",
+		Type:                  model.TransactionTypeExpense,
+		Amount:                100.00,
+		Currency:              "USD",
+		Date:                  time.Now(),
+		IncludeInBalance:      true,
+		DefaultCurrency:       &defCur,
+		DefaultCurrencyAmount: &defAmt,
+	}
+
+	s.accountRepo.EXPECT().IsMember(ctx, req.AccountID, userID).Return(true, nil)
+	s.repo.EXPECT().GetMemberDefaults(ctx, req.AccountID).Return([]model.AccountMember{
+		{UserID: userID, DefaultShare: 1.0},
+	}, nil)
+	s.repo.EXPECT().Create(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Require().NotNil(tx.DefaultCurrency)
+		s.Equal("RUB", *tx.DefaultCurrency)
+		s.Require().NotNil(tx.DefaultCurrencyAmount)
+		s.Equal(9000.00, *tx.DefaultCurrencyAmount)
+		tx.ID = "tx-dc"
+		return tx, nil
+	})
+
+	tx, err := s.svc.Create(ctx, userID, req)
+	s.NoError(err)
+	s.Equal("tx-dc", tx.ID)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_DefaultCurrencyAmount_Updated() {
+	ctx := context.Background()
+	userID := "user-1"
+	txID := "tx-1"
+	defCur := "RUB"
+	oldAmt := 8000.00
+	newAmt := 9500.00
+
+	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{
+		ID:                    txID,
+		AccountID:             "acc-1",
+		Amount:                100.00,
+		Currency:              "USD",
+		DefaultCurrency:       &defCur,
+		DefaultCurrencyAmount: &oldAmt,
+	}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Require().NotNil(tx.DefaultCurrencyAmount)
+		s.Equal(9500.00, *tx.DefaultCurrencyAmount)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
+
+	_, err := s.svc.Update(ctx, userID, txID, model.UpdateTransactionReq{DefaultCurrencyAmount: &newAmt})
+	s.NoError(err)
+}

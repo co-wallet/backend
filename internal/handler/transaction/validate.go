@@ -14,18 +14,20 @@ type shareReq struct {
 }
 
 type createTransactionReq struct {
-	AccountID        string                `json:"accountId"`
-	ToAccountID      *string               `json:"toAccountId"`
-	Type             model.TransactionType `json:"type"`
-	Amount           float64               `json:"amount"`
-	Currency         string                `json:"currency"`
-	ExchangeRate     *float64              `json:"exchangeRate"`
-	CategoryID       *string               `json:"categoryId"`
-	Description      *string               `json:"description"`
-	Date             time.Time             `json:"date"`
-	IncludeInBalance bool                  `json:"includeInBalance"`
-	Shares           []shareReq            `json:"shares"`
-	Tags             []string              `json:"tags"`
+	AccountID             string                `json:"accountId"`
+	ToAccountID           *string               `json:"toAccountId"`
+	Type                  model.TransactionType `json:"type"`
+	Amount                float64               `json:"amount"`
+	Currency              string                `json:"currency"`
+	ExchangeRate          *float64              `json:"exchangeRate"`
+	DefaultCurrency       *string               `json:"defaultCurrency"`
+	DefaultCurrencyAmount *float64              `json:"defaultCurrencyAmount"`
+	CategoryID            *string               `json:"categoryId"`
+	Description           *string               `json:"description"`
+	Date                  time.Time             `json:"date"`
+	IncludeInBalance      bool                  `json:"includeInBalance"`
+	Shares                []shareReq            `json:"shares"`
+	Tags                  []string              `json:"tags"`
 }
 
 func (r *createTransactionReq) validate() error {
@@ -52,17 +54,19 @@ func (r *createTransactionReq) validate() error {
 
 func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 	req := model.CreateTransactionReq{
-		AccountID:        r.AccountID,
-		ToAccountID:      r.ToAccountID,
-		Type:             r.Type,
-		Amount:           r.Amount,
-		Currency:         strings.ToUpper(r.Currency),
-		ExchangeRate:     r.ExchangeRate,
-		CategoryID:       r.CategoryID,
-		Description:      r.Description,
-		Date:             r.Date,
-		IncludeInBalance: r.IncludeInBalance,
-		Tags:             r.Tags,
+		AccountID:             r.AccountID,
+		ToAccountID:           r.ToAccountID,
+		Type:                  r.Type,
+		Amount:                r.Amount,
+		Currency:              strings.ToUpper(r.Currency),
+		ExchangeRate:          r.ExchangeRate,
+		DefaultCurrency:       r.DefaultCurrency,
+		DefaultCurrencyAmount: r.DefaultCurrencyAmount,
+		CategoryID:            r.CategoryID,
+		Description:           r.Description,
+		Date:                  r.Date,
+		IncludeInBalance:      r.IncludeInBalance,
+		Tags:                  r.Tags,
 	}
 	if len(r.Shares) > 0 {
 		req.Shares = make([]model.ShareReq, len(r.Shares))
@@ -74,13 +78,14 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 }
 
 type updateTransactionReq struct {
-	Amount           *float64   `json:"amount"`
-	CategoryID       *string    `json:"categoryId"`
-	Description      *string    `json:"description"`
-	Date             *time.Time `json:"date"`
-	IncludeInBalance *bool      `json:"includeInBalance"`
-	Shares           []shareReq `json:"shares"`
-	Tags             []string   `json:"tags"`
+	Amount                *float64   `json:"amount"`
+	DefaultCurrencyAmount *float64   `json:"defaultCurrencyAmount"`
+	CategoryID            *string    `json:"categoryId"`
+	Description           *string    `json:"description"`
+	Date                  *time.Time `json:"date"`
+	IncludeInBalance      *bool      `json:"includeInBalance"`
+	Shares                []shareReq `json:"shares"`
+	Tags                  []string   `json:"tags"`
 }
 
 func (r *updateTransactionReq) validate() error {
@@ -92,12 +97,13 @@ func (r *updateTransactionReq) validate() error {
 
 func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 	req := model.UpdateTransactionReq{
-		Amount:           r.Amount,
-		CategoryID:       r.CategoryID,
-		Description:      r.Description,
-		Date:             r.Date,
-		IncludeInBalance: r.IncludeInBalance,
-		Tags:             r.Tags,
+		Amount:                r.Amount,
+		DefaultCurrencyAmount: r.DefaultCurrencyAmount,
+		CategoryID:            r.CategoryID,
+		Description:           r.Description,
+		Date:                  r.Date,
+		IncludeInBalance:      r.IncludeInBalance,
+		Tags:                  r.Tags,
 	}
 	if len(r.Shares) > 0 {
 		req.Shares = make([]model.ShareReq, len(r.Shares))
