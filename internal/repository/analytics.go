@@ -203,7 +203,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
 		JOIN transaction_tags tt ON tt.transaction_id = t.id
-		JOIN tags tg ON tg.id = tt.tag_id
+		JOIN tags tg ON tg.id = tt.tag_id AND tg.deleted_at IS NULL
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s
