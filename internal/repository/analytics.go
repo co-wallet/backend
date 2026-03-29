@@ -68,6 +68,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		        AS balance_native
 		    FROM accounts a
 		    LEFT JOIN transactions t ON t.account_id = a.id
+		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
 		    LEFT JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		    WHERE (a.owner_id = $1 OR EXISTS (
 		              SELECT 1 FROM account_members am
@@ -130,6 +131,11 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsFilter) ([]model.CategoryStat, error) {
 	displayCurrency := f.DisplayCurrency
 
+	txType := f.TxType
+	if txType != "income" {
+		txType = "expense"
+	}
+
 	args := []any{f.UserID}
 	idx := 2
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
@@ -150,13 +156,14 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
-		  AND t.type = 'expense'
+		  AND t.type = '%s'
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		GROUP BY c.id, c.name, c.icon
 		ORDER BY amount DESC`,
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
+		txType,
 		dateFrom,
 		dateTo,
 	)

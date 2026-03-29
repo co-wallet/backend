@@ -3,6 +3,7 @@ package accounthandler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -101,11 +102,17 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a, err := h.service.UpdateAccount(r.Context(), accountID, model.UpdateAccountReq{
+	updateReq := model.UpdateAccountReq{
 		Name:             req.Name,
 		Icon:             req.Icon,
 		IncludeInBalance: req.IncludeInBalance,
-	})
+		InitialBalance:   req.InitialBalance,
+	}
+	if req.InitialBalanceDate != nil {
+		t, _ := time.Parse("2006-01-02", *req.InitialBalanceDate)
+		updateReq.InitialBalanceDate = &t
+	}
+	a, err := h.service.UpdateAccount(r.Context(), accountID, updateReq)
 	if err != nil {
 		handleServiceError(w, err)
 		return

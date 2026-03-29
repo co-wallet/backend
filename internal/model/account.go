@@ -18,7 +18,7 @@ type Account struct {
 	Icon               *string     `json:"icon"`
 	IncludeInBalance   bool        `json:"includeInBalance"`
 	InitialBalance     float64     `json:"initialBalance"`
-	InitialBalanceDate *string     `json:"initialBalanceDate"`
+	InitialBalanceDate time.Time   `json:"initialBalanceDate"`
 	DeletedAt          *time.Time  `json:"-"`
 	CreatedAt          time.Time   `json:"createdAt"`
 	UpdatedAt          time.Time   `json:"updatedAt"`
@@ -52,11 +52,13 @@ type CreateAccountReq struct {
 	Icon               *string     `json:"icon"`
 	IncludeInBalance   bool        `json:"includeInBalance"`
 	InitialBalance     float64     `json:"initialBalance"`
-	InitialBalanceDate *string     `json:"initialBalanceDate"`
+	InitialBalanceDate time.Time   `json:"initialBalanceDate"`
 }
 
 type UpdateAccountReq struct {
-	Name             *string `json:"name"`
-	Icon             *string `json:"icon"`
-	IncludeInBalance *bool   `json:"includeInBalance"`
+	Name               *string    `json:"name"`
+	Icon               *string    `json:"icon"`
+	IncludeInBalance   *bool      `json:"includeInBalance"`
+	InitialBalance     *float64   `json:"initialBalance"`
+	InitialBalanceDate *time.Time `json:"initialBalanceDate"` // nil = don't update
 }

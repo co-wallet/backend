@@ -66,6 +66,7 @@ func (h *Handler) parseFilter(r *http.Request, userID string) model.AnalyticsFil
 		DateTo:          dateTo,
 		AccountIDs:      accountIDs,
 		DisplayCurrency: currency,
+		TxType:          q.Get("type"),
 	}
 }
 

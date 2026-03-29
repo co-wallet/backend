@@ -76,6 +76,13 @@ func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, re
 	if req.IncludeInBalance != nil {
 		a.IncludeInBalance = *req.IncludeInBalance
 	}
+	if req.InitialBalance != nil {
+		a.InitialBalance = *req.InitialBalance
+	}
+	if req.InitialBalanceDate != nil {
+		a.InitialBalanceDate = *req.InitialBalanceDate
+	}
+
 	return s.accounts.Update(ctx, a)
 }
 

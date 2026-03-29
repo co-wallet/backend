@@ -25,4 +25,5 @@ type AnalyticsFilter struct {
 	DateTo          string
 	AccountIDs      []string
 	DisplayCurrency string // convert all amounts to this currency (default: USD)
+	TxType          string // "expense" (default) or "income"
 }

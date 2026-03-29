@@ -3,18 +3,19 @@ package accounthandler
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type createAccountReq struct {
-	Name               string              `json:"name"`
-	Type               model.AccountType   `json:"type"`
-	Currency           string              `json:"currency"`
-	Icon               *string             `json:"icon"`
-	IncludeInBalance   *bool               `json:"includeInBalance"`
-	InitialBalance     float64             `json:"initialBalance"`
-	InitialBalanceDate *string             `json:"initialBalanceDate"`
+	Name               string            `json:"name"`
+	Type               model.AccountType `json:"type"`
+	Currency           string            `json:"currency"`
+	Icon               *string           `json:"icon"`
+	IncludeInBalance   *bool             `json:"includeInBalance"`
+	InitialBalance     float64           `json:"initialBalance"`
+	InitialBalanceDate string            `json:"initialBalanceDate"` // "YYYY-MM-DD" from frontend
 }
 
 func (r *createAccountReq) validate() error {
@@ -30,6 +31,12 @@ func (r *createAccountReq) validate() error {
 	if r.Type != model.AccountTypePersonal && r.Type != model.AccountTypeShared {
 		return fmt.Errorf("type must be 'personal' or 'shared'")
 	}
+	if r.InitialBalanceDate == "" {
+		return fmt.Errorf("initialBalanceDate is required")
+	}
+	if _, err := time.Parse("2006-01-02", r.InitialBalanceDate); err != nil {
+		return fmt.Errorf("initialBalanceDate must be YYYY-MM-DD")
+	}
 	return nil
 }
 
@@ -38,6 +45,7 @@ func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 	if r.IncludeInBalance != nil {
 		includeInBalance = *r.IncludeInBalance
 	}
+	ibd, _ := time.Parse("2006-01-02", r.InitialBalanceDate)
 	return model.CreateAccountReq{
 		Name:               r.Name,
 		Type:               r.Type,
@@ -45,14 +53,16 @@ func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 		Icon:               r.Icon,
 		IncludeInBalance:   includeInBalance,
 		InitialBalance:     r.InitialBalance,
-		InitialBalanceDate: r.InitialBalanceDate,
+		InitialBalanceDate: ibd,
 	}
 }
 
 type updateAccountReq struct {
-	Name             *string `json:"name"`
-	Icon             *string `json:"icon"`
-	IncludeInBalance *bool   `json:"includeInBalance"`
+	Name               *string  `json:"name"`
+	Icon               *string  `json:"icon"`
+	IncludeInBalance   *bool    `json:"includeInBalance"`
+	InitialBalance     *float64 `json:"initialBalance"`
+	InitialBalanceDate *string  `json:"initialBalanceDate"` // "YYYY-MM-DD", nil = don't update
 }
 
 func (r *updateAccountReq) validate() error {
@@ -60,6 +70,11 @@ func (r *updateAccountReq) validate() error {
 		*r.Name = strings.TrimSpace(*r.Name)
 		if *r.Name == "" {
 			return fmt.Errorf("name cannot be empty")
+		}
+	}
+	if r.InitialBalanceDate != nil {
+		if _, err := time.Parse("2006-01-02", *r.InitialBalanceDate); err != nil {
+			return fmt.Errorf("initialBalanceDate must be YYYY-MM-DD")
 		}
 	}
 	return nil
