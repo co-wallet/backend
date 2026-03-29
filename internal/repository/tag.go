@@ -79,7 +79,13 @@ func (r *TagRepository) Update(ctx context.Context, t model.Tag) (model.Tag, err
 }
 
 func (r *TagRepository) SoftDelete(ctx context.Context, id, userID string) error {
-	tag, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	tag, err := tx.Exec(ctx, `
 		UPDATE tags SET deleted_at = now()
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID,
 	)
@@ -89,7 +95,12 @@ func (r *TagRepository) SoftDelete(ctx context.Context, id, userID string) error
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("tag %s: %w", id, apperr.ErrNotFound)
 	}
-	return nil
+
+	if _, err := tx.Exec(ctx, `DELETE FROM transaction_tags WHERE tag_id = $1`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // UpsertForTransaction upserts tags by name for a user and links them to the transaction.
