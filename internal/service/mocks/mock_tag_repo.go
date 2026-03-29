@@ -41,6 +41,20 @@ func (m *MockTagRepo) EXPECT() *MockTagRepoMockRecorder {
 	return m.recorder
 }
 
+// Delete mocks base method.
+func (m *MockTagRepo) Delete(ctx context.Context, id, userID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, id, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockTagRepoMockRecorder) Delete(ctx, id, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockTagRepo)(nil).Delete), ctx, id, userID)
+}
+
 // GetByID mocks base method.
 func (m *MockTagRepo) GetByID(ctx context.Context, id, userID string) (model.Tag, error) {
 	m.ctrl.T.Helper()
@@ -84,20 +98,6 @@ func (m *MockTagRepo) ListForTransaction(ctx context.Context, txID string) ([]mo
 func (mr *MockTagRepoMockRecorder) ListForTransaction(ctx, txID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListForTransaction", reflect.TypeOf((*MockTagRepo)(nil).ListForTransaction), ctx, txID)
-}
-
-// SoftDelete mocks base method.
-func (m *MockTagRepo) SoftDelete(ctx context.Context, id, userID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SoftDelete", ctx, id, userID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SoftDelete indicates an expected call of SoftDelete.
-func (mr *MockTagRepoMockRecorder) SoftDelete(ctx, id, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SoftDelete", reflect.TypeOf((*MockTagRepo)(nil).SoftDelete), ctx, id, userID)
 }
 
 // Update mocks base method.

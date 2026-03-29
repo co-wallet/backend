@@ -12,7 +12,7 @@ type TagRepo interface {
 	ListByUser(ctx context.Context, userID string, q string) ([]model.TagWithCount, error)
 	GetByID(ctx context.Context, id, userID string) (model.Tag, error)
 	Update(ctx context.Context, t model.Tag) (model.Tag, error)
-	SoftDelete(ctx context.Context, id, userID string) error
+	Delete(ctx context.Context, id, userID string) error
 	UpsertForTransaction(ctx context.Context, txID, userID string, names []string) ([]model.Tag, error)
 	ListForTransaction(ctx context.Context, txID string) ([]model.Tag, error)
 }
@@ -39,5 +39,5 @@ func (s *TagService) Rename(ctx context.Context, userID, id, name string) (model
 }
 
 func (s *TagService) Delete(ctx context.Context, userID, id string) error {
-	return s.repo.SoftDelete(ctx, id, userID)
+	return s.repo.Delete(ctx, id, userID)
 }

@@ -26,7 +26,7 @@ func (r *TagRepository) ListByUser(ctx context.Context, userID string, q string)
 		       COUNT(tt.transaction_id) AS tx_count
 		FROM tags t
 		LEFT JOIN transaction_tags tt ON tt.tag_id = t.id
-		WHERE t.user_id = $1 AND t.deleted_at IS NULL`
+		WHERE t.user_id = $1`
 	args := []any{userID}
 	if q != "" {
 		query += ` AND t.name ILIKE $2`
@@ -55,7 +55,7 @@ func (r *TagRepository) GetByID(ctx context.Context, id, userID string) (model.T
 	var t model.Tag
 	err := r.db.QueryRow(ctx, `
 		SELECT id, user_id, name, created_at FROM tags
-		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID,
+		WHERE id = $1 AND user_id = $2`, id, userID,
 	).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Tag{}, fmt.Errorf("tag %s: %w", id, apperr.ErrNotFound)
@@ -66,7 +66,7 @@ func (r *TagRepository) GetByID(ctx context.Context, id, userID string) (model.T
 func (r *TagRepository) Update(ctx context.Context, t model.Tag) (model.Tag, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE tags SET name = $3
-		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		WHERE id = $1 AND user_id = $2
 		RETURNING id, user_id, name, created_at`, t.ID, t.UserID, t.Name,
 	).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -78,16 +78,9 @@ func (r *TagRepository) Update(ctx context.Context, t model.Tag) (model.Tag, err
 	return t, err
 }
 
-func (r *TagRepository) SoftDelete(ctx context.Context, id, userID string) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	tag, err := tx.Exec(ctx, `
-		UPDATE tags SET deleted_at = now()
-		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID,
+func (r *TagRepository) Delete(ctx context.Context, id, userID string) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM tags WHERE id = $1 AND user_id = $2`, id, userID,
 	)
 	if err != nil {
 		return err
@@ -95,12 +88,7 @@ func (r *TagRepository) SoftDelete(ctx context.Context, id, userID string) error
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("tag %s: %w", id, apperr.ErrNotFound)
 	}
-
-	if _, err := tx.Exec(ctx, `DELETE FROM transaction_tags WHERE tag_id = $1`, id); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	return nil
 }
 
 // UpsertForTransaction upserts tags by name for a user and links them to the transaction.
@@ -120,7 +108,7 @@ func (r *TagRepository) UpsertForTransaction(ctx context.Context, txID, userID s
 		err := r.db.QueryRow(ctx, `
 			INSERT INTO tags (user_id, name)
 			VALUES ($1, $2)
-			ON CONFLICT (user_id, name) DO UPDATE SET deleted_at = NULL
+			ON CONFLICT (user_id, name) DO UPDATE SET name = EXCLUDED.name
 			RETURNING id, user_id, name, created_at`, userID, name,
 		).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
 		if err != nil {

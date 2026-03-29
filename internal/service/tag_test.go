@@ -87,7 +87,7 @@ func (s *TagServiceSuite) TestRename_Conflict() {
 
 func (s *TagServiceSuite) TestDelete_Success() {
 	ctx := context.Background()
-	s.repo.EXPECT().SoftDelete(ctx, "t1", "u1").Return(nil)
+	s.repo.EXPECT().Delete(ctx, "t1", "u1").Return(nil)
 
 	err := s.svc.Delete(ctx, "u1", "t1")
 	s.NoError(err)
@@ -95,7 +95,7 @@ func (s *TagServiceSuite) TestDelete_Success() {
 
 func (s *TagServiceSuite) TestDelete_NotFound() {
 	ctx := context.Background()
-	s.repo.EXPECT().SoftDelete(ctx, "t99", "u1").Return(apperr.ErrNotFound)
+	s.repo.EXPECT().Delete(ctx, "t99", "u1").Return(apperr.ErrNotFound)
 
 	err := s.svc.Delete(ctx, "u1", "t99")
 	s.True(errors.Is(err, apperr.ErrNotFound))
