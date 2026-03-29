@@ -18,7 +18,7 @@ type Account struct {
 	Icon               *string     `json:"icon"`
 	IncludeInBalance   bool        `json:"includeInBalance"`
 	InitialBalance     float64     `json:"initialBalance"`
-	InitialBalanceDate *string     `json:"initialBalanceDate"`
+	InitialBalanceDate time.Time   `json:"initialBalanceDate"`
 	DeletedAt          *time.Time  `json:"-"`
 	CreatedAt          time.Time   `json:"createdAt"`
 	UpdatedAt          time.Time   `json:"updatedAt"`
@@ -34,6 +34,15 @@ type AccountMember struct {
 	DefaultShare float64 `json:"defaultShare"`
 }
 
+// AccountBalance holds computed balance fields for one account.
+type AccountBalance struct {
+	AccountID      string
+	BalanceNative  float64 // user's share in account's native currency
+	BalanceDisplay float64 // user's share in display currency
+	TotalNative    float64 // all-member total in account's native currency
+	TotalDisplay   float64 // all-member total in display currency
+}
+
 // Request DTOs
 
 type CreateAccountReq struct {
@@ -43,11 +52,13 @@ type CreateAccountReq struct {
 	Icon               *string     `json:"icon"`
 	IncludeInBalance   bool        `json:"includeInBalance"`
 	InitialBalance     float64     `json:"initialBalance"`
-	InitialBalanceDate *string     `json:"initialBalanceDate"`
+	InitialBalanceDate time.Time   `json:"initialBalanceDate"`
 }
 
 type UpdateAccountReq struct {
-	Name             *string `json:"name"`
-	Icon             *string `json:"icon"`
-	IncludeInBalance *bool   `json:"includeInBalance"`
+	Name               *string    `json:"name"`
+	Icon               *string    `json:"icon"`
+	IncludeInBalance   *bool      `json:"includeInBalance"`
+	InitialBalance     *float64   `json:"initialBalance"`
+	InitialBalanceDate *time.Time `json:"initialBalanceDate"` // nil = don't update
 }
