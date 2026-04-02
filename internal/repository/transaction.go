@@ -167,12 +167,12 @@ func (r *TransactionRepository) Update(ctx context.Context, tx model.Transaction
 	err := r.db.QueryRow(ctx, `
 		UPDATE transactions
 		SET amount = $2, category_id = $3, description = $4,
-		    date = $5, include_in_balance = $6, default_currency_amount = $7, updated_at = now()
+		    date = $5, include_in_balance = $6, default_currency = $7, default_currency_amount = $8, updated_at = now()
 		WHERE id = $1
 		RETURNING id, account_id, to_account_id, type, amount, currency, exchange_rate,
 		          default_currency, default_currency_amount,
 		          category_id, description, date, include_in_balance, created_by, created_at, updated_at`,
-		tx.ID, tx.Amount, tx.CategoryID, tx.Description, tx.Date, tx.IncludeInBalance, tx.DefaultCurrencyAmount,
+		tx.ID, tx.Amount, tx.CategoryID, tx.Description, tx.Date, tx.IncludeInBalance, tx.DefaultCurrency, tx.DefaultCurrencyAmount,
 	).Scan(
 		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,

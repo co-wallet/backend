@@ -79,6 +79,7 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 
 type updateTransactionReq struct {
 	Amount                *float64   `json:"amount"`
+	DefaultCurrency       *string    `json:"defaultCurrency"`
 	DefaultCurrencyAmount *float64   `json:"defaultCurrencyAmount"`
 	CategoryID            *string    `json:"categoryId"`
 	Description           *string    `json:"description"`
@@ -98,6 +99,7 @@ func (r *updateTransactionReq) validate() error {
 func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 	req := model.UpdateTransactionReq{
 		Amount:                r.Amount,
+		DefaultCurrency:       r.DefaultCurrency,
 		DefaultCurrencyAmount: r.DefaultCurrencyAmount,
 		CategoryID:            r.CategoryID,
 		Description:           r.Description,
