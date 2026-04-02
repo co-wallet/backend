@@ -23,12 +23,12 @@ func NewTransactionRepository(db *pgxpool.Pool) *TransactionRepository {
 func (r *TransactionRepository) Create(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO transactions
-		    (account_id, to_account_id, type, amount, currency, exchange_rate,
+		    (account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		     default_currency, default_currency_amount,
 		     category_id, description, date, include_in_balance, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING id, created_at, updated_at`,
-		tx.AccountID, tx.ToAccountID, tx.Type, tx.Amount, tx.Currency, tx.ExchangeRate,
+		tx.AccountID, tx.ToAccountID, tx.ToAmount, tx.Type, tx.Amount, tx.Currency, tx.ExchangeRate,
 		tx.DefaultCurrency, tx.DefaultCurrencyAmount,
 		tx.CategoryID, tx.Description, tx.Date, tx.IncludeInBalance, tx.CreatedBy,
 	).Scan(&tx.ID, &tx.CreatedAt, &tx.UpdatedAt)
@@ -45,12 +45,12 @@ func (r *TransactionRepository) Create(ctx context.Context, tx model.Transaction
 func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.Transaction, error) {
 	var tx model.Transaction
 	err := r.db.QueryRow(ctx, `
-		SELECT id, account_id, to_account_id, type, amount, currency, exchange_rate,
+		SELECT id, account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		       default_currency, default_currency_amount,
 		       category_id, description, date, include_in_balance, created_by, created_at, updated_at
 		FROM transactions WHERE id = $1`, id,
 	).Scan(
-		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
+		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 		&tx.CategoryID, &tx.Description, &tx.Date, &tx.IncludeInBalance, &tx.CreatedBy,
 		&tx.CreatedAt, &tx.UpdatedAt,
@@ -70,7 +70,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 	// or is the creator, filtered by the provided criteria.
 	args := []any{userID}
 	q := `
-		SELECT DISTINCT t.id, t.account_id, t.to_account_id, t.type, t.amount, t.currency,
+		SELECT DISTINCT t.id, t.account_id, t.to_account_id, t.to_amount, t.type, t.amount, t.currency,
 		       t.exchange_rate, t.default_currency, t.default_currency_amount,
 		       t.category_id, t.description, t.date, t.include_in_balance,
 		       t.created_by, t.created_at, t.updated_at
@@ -146,7 +146,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 	for rows.Next() {
 		var tx model.Transaction
 		if err := rows.Scan(
-			&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.Type, &tx.Amount, &tx.Currency,
+			&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency,
 			&tx.ExchangeRate, &tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 			&tx.CategoryID, &tx.Description, &tx.Date, &tx.IncludeInBalance,
 			&tx.CreatedBy, &tx.CreatedAt, &tx.UpdatedAt,
@@ -172,15 +172,15 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 func (r *TransactionRepository) Update(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE transactions
-		SET amount = $2, category_id = $3, description = $4,
-		    date = $5, include_in_balance = $6, default_currency = $7, default_currency_amount = $8, updated_at = now()
+		SET amount = $2, to_amount = $3, category_id = $4, description = $5,
+		    date = $6, include_in_balance = $7, default_currency = $8, default_currency_amount = $9, updated_at = now()
 		WHERE id = $1
-		RETURNING id, account_id, to_account_id, type, amount, currency, exchange_rate,
+		RETURNING id, account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		          default_currency, default_currency_amount,
 		          category_id, description, date, include_in_balance, created_by, created_at, updated_at`,
-		tx.ID, tx.Amount, tx.CategoryID, tx.Description, tx.Date, tx.IncludeInBalance, tx.DefaultCurrency, tx.DefaultCurrencyAmount,
+		tx.ID, tx.Amount, tx.ToAmount, tx.CategoryID, tx.Description, tx.Date, tx.IncludeInBalance, tx.DefaultCurrency, tx.DefaultCurrencyAmount,
 	).Scan(
-		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
+		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 		&tx.CategoryID, &tx.Description, &tx.Date, &tx.IncludeInBalance, &tx.CreatedBy,
 		&tx.CreatedAt, &tx.UpdatedAt,

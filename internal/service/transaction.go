@@ -52,6 +52,7 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 	tx := model.Transaction{
 		AccountID:             req.AccountID,
 		ToAccountID:           req.ToAccountID,
+		ToAmount:              req.ToAmount,
 		Type:                  req.Type,
 		Amount:                req.Amount,
 		Currency:              req.Currency,
@@ -134,6 +135,9 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 			return model.Transaction{}, fmt.Errorf("amount must be positive: %w", apperr.ErrValidation)
 		}
 		existing.Amount = *req.Amount
+	}
+	if req.ToAmount != nil {
+		existing.ToAmount = req.ToAmount
 	}
 	if req.DefaultCurrency != nil {
 		existing.DefaultCurrency = req.DefaultCurrency

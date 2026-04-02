@@ -21,6 +21,7 @@ type TransactionResponse struct {
 	ID                    string          `json:"id"`
 	AccountID             string          `json:"accountId"`
 	ToAccountID           *string         `json:"toAccountId"`
+	ToAmount              *float64        `json:"toAmount"`
 	Type                  string          `json:"type"`
 	Amount                float64         `json:"amount"`
 	Currency              string          `json:"currency"`
@@ -50,6 +51,7 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 		ID:                    tx.ID,
 		AccountID:             tx.AccountID,
 		ToAccountID:           tx.ToAccountID,
+		ToAmount:              tx.ToAmount,
 		Type:                  string(tx.Type),
 		Amount:                tx.Amount,
 		Currency:              tx.Currency,

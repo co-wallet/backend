@@ -181,7 +181,7 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		transfer_in AS (
 		    SELECT
 		        a.id,
-		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN t.amount ELSE 0 END), 0) AS amount
+		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN COALESCE(t.to_amount, t.amount) ELSE 0 END), 0) AS amount
 		    FROM accounts a
 		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
 		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
