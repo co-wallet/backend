@@ -89,12 +89,8 @@ func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (mo
 	if err != nil {
 		return model.Transaction{}, err
 	}
-	isMember, err := s.accounts.IsMember(ctx, tx.AccountID, userID)
-	if err != nil {
+	if err = s.checkTransactionAccess(ctx, tx, userID); err != nil {
 		return model.Transaction{}, err
-	}
-	if !isMember {
-		return model.Transaction{}, fmt.Errorf("not a member of account: %w", apperr.ErrForbidden)
 	}
 	tx.Tags, err = s.tags.ListForTransaction(ctx, id)
 	return tx, err
@@ -199,14 +195,28 @@ func (s *TransactionService) Delete(ctx context.Context, userID, id string) erro
 	if err != nil {
 		return err
 	}
+	if err = s.checkTransactionAccess(ctx, tx, userID); err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, id)
+}
+
+// checkTransactionAccess verifies the user is a member of the source or destination account.
+func (s *TransactionService) checkTransactionAccess(ctx context.Context, tx model.Transaction, userID string) error {
 	isMember, err := s.accounts.IsMember(ctx, tx.AccountID, userID)
 	if err != nil {
 		return err
 	}
+	if !isMember && tx.ToAccountID != nil {
+		isMember, err = s.accounts.IsMember(ctx, *tx.ToAccountID, userID)
+		if err != nil {
+			return err
+		}
+	}
 	if !isMember {
 		return fmt.Errorf("not a member of account: %w", apperr.ErrForbidden)
 	}
-	return s.repo.Delete(ctx, id)
+	return nil
 }
 
 // --- internal ---

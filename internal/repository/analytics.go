@@ -61,10 +61,12 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	balanceQuery := fmt.Sprintf(`
 		WITH account_balances AS (
 		    SELECT
+		        a.id,
 		        a.currency,
 		        a.initial_balance
-		        + COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
-		        - COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		        + COALESCE(SUM(CASE WHEN t.type = 'income'   AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
 		        AS balance_native
 		    FROM accounts a
 		    LEFT JOIN transactions t ON t.account_id = a.id
@@ -76,11 +78,27 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		      AND a.include_in_balance = true
 		      AND a.deleted_at IS NULL
 		    GROUP BY a.id, a.currency, a.initial_balance
+		),
+		transfer_in AS (
+		    SELECT
+		        a.id,
+		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN t.amount ELSE 0 END), 0) AS amount
+		    FROM accounts a
+		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
+		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
+		    WHERE (a.owner_id = $1 OR EXISTS (
+		              SELECT 1 FROM account_members am
+		              WHERE am.account_id = a.id AND am.user_id = $1))%s
+		      AND a.include_in_balance = true
+		      AND a.deleted_at IS NULL
+		    GROUP BY a.id
 		)
 		SELECT COALESCE(SUM(%s), 0)
-		FROM account_balances ab`,
+		FROM account_balances ab
+		LEFT JOIN transfer_in ti ON ti.id = ab.id`,
 		bAcctCond,
-		convertExpr("ab.balance_native", "ab.currency", dispIdx),
+		bAcctCond,
+		convertExpr("ab.balance_native + COALESCE(ti.amount, 0)", "ab.currency", dispIdx),
 	)
 
 	var balance float64
