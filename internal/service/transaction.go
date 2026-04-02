@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
@@ -162,6 +163,13 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		for i, sh := range req.Shares {
 			existing.Shares[i] = model.TransactionShare{UserID: sh.UserID, Amount: sh.Amount, IsCustom: true}
 		}
+	} else if req.Amount != nil {
+		// Amount changed but no explicit shares provided — recalculate shares
+		// to keep transaction_shares in sync with the new amount.
+		existing.Shares, err = s.recalcShares(ctx, existing)
+		if err != nil {
+			return model.Transaction{}, err
+		}
 	}
 
 	tx, err := s.repo.Update(ctx, existing)
@@ -217,6 +225,48 @@ func (s *TransactionService) validateCreate(req model.CreateTransactionReq) erro
 		return fmt.Errorf("to_account_id is required for transfer: %w", apperr.ErrValidation)
 	}
 	return nil
+}
+
+func (s *TransactionService) recalcShares(ctx context.Context, tx model.Transaction) ([]model.TransactionShare, error) {
+	hasCustom := false
+	for _, sh := range tx.Shares {
+		if sh.IsCustom {
+			hasCustom = true
+			break
+		}
+	}
+	if hasCustom {
+		// Custom shares: scale proportionally to the new amount.
+		oldTotal := 0.0
+		for _, sh := range tx.Shares {
+			oldTotal += sh.Amount
+		}
+		if oldTotal == 0 {
+			oldTotal = 1
+		}
+		shares := make([]model.TransactionShare, len(tx.Shares))
+		var distributed float64
+		for i, sh := range tx.Shares {
+			shares[i] = model.TransactionShare{UserID: sh.UserID, IsCustom: true}
+			if i < len(tx.Shares)-1 {
+				shares[i].Amount = math.Round(sh.Amount/oldTotal*tx.Amount*100) / 100
+				distributed += shares[i].Amount
+			} else {
+				shares[i].Amount = math.Round((tx.Amount-distributed)*100) / 100
+			}
+		}
+		return shares, nil
+	}
+
+	// Default shares: recalculate from member defaults.
+	members, err := s.repo.GetMemberDefaults(ctx, tx.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	if len(members) <= 1 {
+		return []model.TransactionShare{{UserID: tx.CreatedBy, Amount: tx.Amount}}, nil
+	}
+	return calculateShares(tx.Amount, members)
 }
 
 func (s *TransactionService) resolveShares(ctx context.Context, req model.CreateTransactionReq, createdBy string) ([]model.TransactionShare, error) {
