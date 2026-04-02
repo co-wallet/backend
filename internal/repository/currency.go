@@ -17,15 +17,15 @@ func NewCurrencyRepository(db *pgxpool.Pool) *CurrencyRepository {
 	return &CurrencyRepository{db: db}
 }
 
-func (r *CurrencyRepository) ListActive(ctx context.Context) ([]model.CurrencyWithRate, error) {
+func (r *CurrencyRepository) ListActive(ctx context.Context, extraCodes []string) ([]model.CurrencyWithRate, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT c.code, c.name, c.symbol, c.is_active,
 		       COALESCE(er.rate, 0) AS rate_to_usd
 		FROM currencies c
 		LEFT JOIN exchange_rates er
 		       ON er.base_currency = 'USD' AND er.quote_currency = c.code
-		WHERE c.is_active = true
-		ORDER BY c.code`)
+		WHERE c.is_active = true OR c.code = ANY($1)
+		ORDER BY c.code`, extraCodes)
 	if err != nil {
 		return nil, fmt.Errorf("list currencies: %w", err)
 	}

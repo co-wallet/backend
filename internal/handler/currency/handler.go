@@ -3,13 +3,14 @@ package currencyhandler
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/co-wallet/backend/internal/httputil"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type currencyService interface {
-	ListActive(ctx context.Context) ([]model.CurrencyWithRate, error)
+	ListActive(ctx context.Context, extraCodes []string) ([]model.CurrencyWithRate, error)
 }
 
 type Handler struct {
@@ -21,7 +22,16 @@ func New(svc currencyService) *Handler {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	currencies, err := h.svc.ListActive(r.Context())
+	var extraCodes []string
+	if codes := r.URL.Query().Get("codes"); codes != "" {
+		for _, c := range strings.Split(codes, ",") {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				extraCodes = append(extraCodes, c)
+			}
+		}
+	}
+	currencies, err := h.svc.ListActive(r.Context(), extraCodes)
 	if err != nil {
 		httputil.HandleServiceError(w, err)
 		return

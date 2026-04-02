@@ -20,8 +20,8 @@ func NewCurrencyService(repo *repository.CurrencyRepository) *CurrencyService {
 	return &CurrencyService{repo: repo}
 }
 
-func (s *CurrencyService) ListActive(ctx context.Context) ([]model.CurrencyWithRate, error) {
-	currencies, err := s.repo.ListActive(ctx)
+func (s *CurrencyService) ListActive(ctx context.Context, extraCodes []string) ([]model.CurrencyWithRate, error) {
+	currencies, err := s.repo.ListActive(ctx, extraCodes)
 	if err != nil {
 		return nil, err
 	}
