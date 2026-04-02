@@ -159,12 +159,14 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		        a.initial_balance
 		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
 		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
-		            + COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
-		            - COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		            + COALESCE(SUM(CASE WHEN t.type = 'income'   AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'expense'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
 		        AS balance_native,
 		        a.initial_balance
-		            + COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
-		            - COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
+		            + COALESCE(SUM(CASE WHEN t.type = 'income'   AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'expense'  AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
+		            - COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.include_in_balance THEN t.amount ELSE 0 END), 0)
 		        AS total_native
 		    FROM accounts a
 		    LEFT JOIN transactions t ON t.account_id = a.id
@@ -175,16 +177,32 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		               SELECT 1 FROM account_members am
 		               WHERE am.account_id = a.id AND am.user_id = $1))
 		    GROUP BY a.id, a.currency, a.initial_balance
+		),
+		transfer_in AS (
+		    SELECT
+		        a.id,
+		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN t.amount ELSE 0 END), 0) AS amount
+		    FROM accounts a
+		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
+		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
+		    WHERE a.deleted_at IS NULL
+		      AND (a.owner_id = $1 OR EXISTS (
+		               SELECT 1 FROM account_members am
+		               WHERE am.account_id = a.id AND am.user_id = $1))
+		    GROUP BY a.id
 		)
 		SELECT
-		    id,
-		    balance_native,
+		    pa.id,
+		    pa.balance_native + COALESCE(ti.amount, 0)
+		        * COALESCE((SELECT am_me.default_share FROM account_members am_me
+		                    WHERE am_me.account_id = pa.id AND am_me.user_id = $1), 1.0),
 		    %s AS balance_display,
-		    total_native,
+		    pa.total_native + COALESCE(ti.amount, 0),
 		    %s AS total_display
-		FROM per_account`,
-		convertExpr("balance_native", "currency", 2),
-		convertExpr("total_native", "currency", 2),
+		FROM per_account pa
+		LEFT JOIN transfer_in ti ON ti.id = pa.id`,
+		convertExpr("pa.balance_native + COALESCE(ti.amount, 0) * COALESCE((SELECT am_me.default_share FROM account_members am_me WHERE am_me.account_id = pa.id AND am_me.user_id = $1), 1.0)", "pa.currency", 2),
+		convertExpr("pa.total_native + COALESCE(ti.amount, 0)", "pa.currency", 2),
 	)
 
 	rows, err := r.db.Query(ctx, q, userID, displayCurrency)

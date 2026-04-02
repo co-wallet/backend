@@ -76,13 +76,19 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		       t.created_by, t.created_at, t.updated_at
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
-		WHERE (a.owner_id = $1 OR EXISTS (
-		    SELECT 1 FROM account_members am WHERE am.account_id = t.account_id AND am.user_id = $1
-		))`
+		LEFT JOIN accounts a2 ON a2.id = t.to_account_id
+		WHERE (
+		    a.owner_id = $1
+		    OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = t.account_id AND am.user_id = $1)
+		    OR (t.to_account_id IS NOT NULL AND (
+		        a2.owner_id = $1
+		        OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = t.to_account_id AND am.user_id = $1)
+		    ))
+		)`
 
 	n := 2
 	if len(f.AccountIDs) > 0 {
-		q += fmt.Sprintf(" AND t.account_id = ANY($%d)", n)
+		q += fmt.Sprintf(" AND (t.account_id = ANY($%d) OR t.to_account_id = ANY($%d))", n, n)
 		args = append(args, f.AccountIDs)
 		n++
 	}
