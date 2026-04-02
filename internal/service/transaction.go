@@ -139,6 +139,9 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		}
 		existing.Amount = *req.Amount
 	}
+	if req.DefaultCurrency != nil {
+		existing.DefaultCurrency = req.DefaultCurrency
+	}
 	if req.DefaultCurrencyAmount != nil {
 		existing.DefaultCurrencyAmount = req.DefaultCurrencyAmount
 	}
