@@ -288,11 +288,77 @@ func (s *TransactionServiceSuite) TestUpdate_Success() {
 	newAmount := 200.00
 
 	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{
-		ID: txID, AccountID: "acc-1", Amount: 100.00,
+		ID: txID, AccountID: "acc-1", Amount: 100.00, CreatedBy: userID,
 	}, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	// Amount changed without explicit shares → recalcShares calls GetMemberDefaults
+	s.repo.EXPECT().GetMemberDefaults(ctx, "acc-1").Return(nil, nil)
 	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
 		s.Equal(200.00, tx.Amount)
+		s.Require().Len(tx.Shares, 1)
+		s.Equal(userID, tx.Shares[0].UserID)
+		s.Equal(200.00, tx.Shares[0].Amount)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
+
+	tx, err := s.svc.Update(ctx, userID, txID, model.UpdateTransactionReq{Amount: &newAmount})
+	s.NoError(err)
+	s.Equal(200.00, tx.Amount)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_AmountChanged_SharedAccount_RecalcShares() {
+	ctx := context.Background()
+	userID := "user-1"
+	txID := "tx-1"
+	newAmount := 300.00
+
+	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{
+		ID: txID, AccountID: "acc-1", Amount: 100.00, CreatedBy: userID,
+		Shares: []model.TransactionShare{
+			{UserID: "user-1", Amount: 50.00},
+			{UserID: "user-2", Amount: 50.00},
+		},
+	}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	s.repo.EXPECT().GetMemberDefaults(ctx, "acc-1").Return([]model.AccountMember{
+		{UserID: "user-1", DefaultShare: 0.5},
+		{UserID: "user-2", DefaultShare: 0.5},
+	}, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal(300.00, tx.Amount)
+		s.Require().Len(tx.Shares, 2)
+		s.Equal(150.00, tx.Shares[0].Amount)
+		s.Equal(150.00, tx.Shares[1].Amount)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
+
+	tx, err := s.svc.Update(ctx, userID, txID, model.UpdateTransactionReq{Amount: &newAmount})
+	s.NoError(err)
+	s.Equal(300.00, tx.Amount)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_AmountChanged_CustomShares_ScalesProportionally() {
+	ctx := context.Background()
+	userID := "user-1"
+	txID := "tx-1"
+	newAmount := 200.00
+
+	s.repo.EXPECT().GetByID(ctx, txID).Return(model.Transaction{
+		ID: txID, AccountID: "acc-1", Amount: 100.00, CreatedBy: userID,
+		Shares: []model.TransactionShare{
+			{UserID: "user-1", Amount: 70.00, IsCustom: true},
+			{UserID: "user-2", Amount: 30.00, IsCustom: true},
+		},
+	}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "acc-1", userID).Return(true, nil)
+	// Custom shares: no GetMemberDefaults call, scales proportionally
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal(200.00, tx.Amount)
+		s.Require().Len(tx.Shares, 2)
+		s.Equal(140.00, tx.Shares[0].Amount)
+		s.Equal(60.00, tx.Shares[1].Amount)
 		return tx, nil
 	})
 	s.tagRepo.EXPECT().ListForTransaction(ctx, txID).Return(nil, nil)
