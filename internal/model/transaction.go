@@ -15,22 +15,24 @@ func (t TransactionType) IsValid() bool {
 }
 
 type Transaction struct {
-	ID               string
-	AccountID        string
-	ToAccountID      *string
-	Type             TransactionType
-	Amount           float64
-	Currency         string
-	ExchangeRate     *float64
-	CategoryID       *string
-	Description      *string
-	Date             time.Time
-	IncludeInBalance bool
-	CreatedBy        string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Shares           []TransactionShare
-	Tags             []Tag
+	ID                     string
+	AccountID              string
+	ToAccountID            *string
+	Type                   TransactionType
+	Amount                 float64
+	Currency               string
+	ExchangeRate           *float64
+	DefaultCurrency        *string
+	DefaultCurrencyAmount  *float64
+	CategoryID             *string
+	Description            *string
+	Date                   time.Time
+	IncludeInBalance       bool
+	CreatedBy              string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	Shares                 []TransactionShare
+	Tags                   []Tag
 }
 
 type TransactionShare struct {
@@ -42,29 +44,32 @@ type TransactionShare struct {
 }
 
 type CreateTransactionReq struct {
-	AccountID        string
-	ToAccountID      *string
-	Type             TransactionType
-	Amount           float64
-	Currency         string
-	ExchangeRate     *float64
-	CategoryID       *string
-	Description      *string
-	Date             time.Time
-	IncludeInBalance bool
-	Shares           []ShareReq // nil = auto-calculate from member defaults
-	Tags             []string   // tag names; upserted on create
+	AccountID             string
+	ToAccountID           *string
+	Type                  TransactionType
+	Amount                float64
+	Currency              string
+	ExchangeRate          *float64
+	DefaultCurrency       *string
+	DefaultCurrencyAmount *float64
+	CategoryID            *string
+	Description           *string
+	Date                  time.Time
+	IncludeInBalance      bool
+	Shares                []ShareReq // nil = auto-calculate from member defaults
+	Tags                  []string   // tag names; upserted on create
 }
 
 
 type UpdateTransactionReq struct {
-	Amount           *float64
-	CategoryID       *string
-	Description      *string
-	Date             *time.Time
-	IncludeInBalance *bool
-	Shares           []ShareReq
-	Tags             []string // nil = don't change; []string{} = clear all tags
+	Amount                *float64
+	DefaultCurrencyAmount *float64
+	CategoryID            *string
+	Description           *string
+	Date                  *time.Time
+	IncludeInBalance      *bool
+	Shares                []ShareReq
+	Tags                  []string // nil = don't change; []string{} = clear all tags
 }
 
 type ShareReq struct {

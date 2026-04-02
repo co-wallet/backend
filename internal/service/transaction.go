@@ -49,17 +49,19 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 	}
 
 	tx := model.Transaction{
-		AccountID:        req.AccountID,
-		ToAccountID:      req.ToAccountID,
-		Type:             req.Type,
-		Amount:           req.Amount,
-		Currency:         req.Currency,
-		ExchangeRate:     req.ExchangeRate,
-		CategoryID:       req.CategoryID,
-		Description:      req.Description,
-		Date:             req.Date,
-		IncludeInBalance: req.IncludeInBalance,
-		CreatedBy:        userID,
+		AccountID:             req.AccountID,
+		ToAccountID:           req.ToAccountID,
+		Type:                  req.Type,
+		Amount:                req.Amount,
+		Currency:              req.Currency,
+		ExchangeRate:          req.ExchangeRate,
+		DefaultCurrency:       req.DefaultCurrency,
+		DefaultCurrencyAmount: req.DefaultCurrencyAmount,
+		CategoryID:            req.CategoryID,
+		Description:           req.Description,
+		Date:                  req.Date,
+		IncludeInBalance:      req.IncludeInBalance,
+		CreatedBy:             userID,
 	}
 
 	tx.Shares, err = s.resolveShares(ctx, req, userID)
@@ -135,6 +137,9 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 			return model.Transaction{}, fmt.Errorf("amount must be positive: %w", apperr.ErrValidation)
 		}
 		existing.Amount = *req.Amount
+	}
+	if req.DefaultCurrencyAmount != nil {
+		existing.DefaultCurrencyAmount = req.DefaultCurrencyAmount
 	}
 	if req.CategoryID != nil {
 		existing.CategoryID = req.CategoryID
