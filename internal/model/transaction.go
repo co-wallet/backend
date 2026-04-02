@@ -18,6 +18,7 @@ type Transaction struct {
 	ID                     string
 	AccountID              string
 	ToAccountID            *string
+	ToAmount               *float64
 	Type                   TransactionType
 	Amount                 float64
 	Currency               string
@@ -46,6 +47,7 @@ type TransactionShare struct {
 type CreateTransactionReq struct {
 	AccountID             string
 	ToAccountID           *string
+	ToAmount              *float64
 	Type                  TransactionType
 	Amount                float64
 	Currency              string
@@ -63,6 +65,7 @@ type CreateTransactionReq struct {
 
 type UpdateTransactionReq struct {
 	Amount                *float64
+	ToAmount              *float64
 	DefaultCurrency       *string
 	DefaultCurrencyAmount *float64
 	CategoryID            *string

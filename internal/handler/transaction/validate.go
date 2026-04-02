@@ -16,6 +16,7 @@ type shareReq struct {
 type createTransactionReq struct {
 	AccountID             string                `json:"accountId"`
 	ToAccountID           *string               `json:"toAccountId"`
+	ToAmount              *float64              `json:"toAmount"`
 	Type                  model.TransactionType `json:"type"`
 	Amount                float64               `json:"amount"`
 	Currency              string                `json:"currency"`
@@ -56,6 +57,7 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 	req := model.CreateTransactionReq{
 		AccountID:             r.AccountID,
 		ToAccountID:           r.ToAccountID,
+		ToAmount:              r.ToAmount,
 		Type:                  r.Type,
 		Amount:                r.Amount,
 		Currency:              strings.ToUpper(r.Currency),
@@ -79,6 +81,7 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 
 type updateTransactionReq struct {
 	Amount                *float64   `json:"amount"`
+	ToAmount              *float64   `json:"toAmount"`
 	DefaultCurrency       *string    `json:"defaultCurrency"`
 	DefaultCurrencyAmount *float64   `json:"defaultCurrencyAmount"`
 	CategoryID            *string    `json:"categoryId"`
@@ -99,6 +102,7 @@ func (r *updateTransactionReq) validate() error {
 func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 	req := model.UpdateTransactionReq{
 		Amount:                r.Amount,
+		ToAmount:              r.ToAmount,
 		DefaultCurrency:       r.DefaultCurrency,
 		DefaultCurrencyAmount: r.DefaultCurrencyAmount,
 		CategoryID:            r.CategoryID,
