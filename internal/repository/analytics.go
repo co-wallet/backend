@@ -36,9 +36,12 @@ func accountFilter(accountIDs []string, args []any, idx int) (string, []any, int
 // convertExpr returns a SQL expression that converts `amount_expr` from `from_currency_col`
 // to the display currency at position `displayCurrencyIdx`.
 // Formula: amount * rate(USD→display) / rate(USD→from_currency)
+//
+// amountExpr оборачивается в скобки, чтобы составные выражения (например, `a + b`)
+// не ломали приоритет операторов и вся сумма целиком умножалась/делилась на курсы.
 func convertExpr(amountExpr, fromCurrencyCol string, displayCurrencyIdx int) string {
 	return fmt.Sprintf(`
-		%s
+		(%s)
 		* COALESCE((SELECT er_d.rate FROM exchange_rates er_d
 		             WHERE er_d.base_currency = 'USD' AND er_d.quote_currency = $%d), 1.0)
 		/ NULLIF(COALESCE((SELECT er_f.rate FROM exchange_rates er_f
