@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/smtp"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/co-wallet/backend/internal/apperr"
@@ -177,7 +179,11 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 			IsActive:        true,
 		})
 		if createErr != nil {
-			return fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
+			var pgErr *pgconn.PgError
+			if errors.As(createErr, &pgErr) && pgErr.Code == "23505" {
+				return fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
+			}
+			return fmt.Errorf("create user: %w", createErr)
 		}
 		created = u
 		if markErr := invRepo.MarkUsed(ctx, req.Token); markErr != nil {

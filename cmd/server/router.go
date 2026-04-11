@@ -2,9 +2,12 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"golang.org/x/time/rate"
 
 	"github.com/co-wallet/backend/internal/handler"
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
@@ -45,14 +48,26 @@ func newRouter(
 	inviteHandler := invitehandler.New(inviteSvc)
 
 	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
-	r.Use(chimw.RequestID)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
+
+	// 5 req/s with burst of 10 per IP, 5-minute idle eviction — applied to auth endpoints.
+	authLimiter := middleware.RateLimit(rate.Limit(5), 10, 5*time.Minute)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", handler.Health)
 
 		r.Route("/auth", func(r chi.Router) {
+			r.Use(authLimiter)
 			// /register removed — accounts are created via invite only
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
@@ -60,7 +75,7 @@ func newRouter(
 
 		// Public endpoints (no auth required)
 		r.Get("/invites/{token}", inviteHandler.Validate)
-		r.Post("/invites/{token}/accept", inviteHandler.Accept)
+		r.With(authLimiter).Post("/invites/{token}/accept", inviteHandler.Accept)
 		r.Get("/currencies", currencyHandler.List)
 
 		r.Group(func(r chi.Router) {

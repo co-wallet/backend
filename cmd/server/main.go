@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,29 +16,40 @@ import (
 	"github.com/co-wallet/backend/internal/service"
 )
 
+const defaultJWTSecret = "change-me-in-production"
+
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		slog.Error("load config", "err", err)
+		os.Exit(1)
+	}
+
+	if cfg.JWTSecret == defaultJWTSecret {
+		slog.Warn("JWT_SECRET is using the default placeholder — set a strong secret in production")
 	}
 
 	ctx := context.Background()
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("connect to db: %v", err)
+		slog.Error("connect to db", "err", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
-	log.Println("connected to database")
+	slog.Info("connected to database")
 
 	migrationsDir := "migrations"
 	if dir := os.Getenv("MIGRATIONS_DIR"); dir != "" {
 		migrationsDir = dir
 	}
 	if err = db.RunMigrations(cfg.DatabaseURL, migrationsDir); err != nil {
-		log.Fatalf("run migrations: %v", err)
+		slog.Error("run migrations", "err", err)
+		os.Exit(1)
 	}
-	log.Println("migrations applied")
+	slog.Info("migrations applied")
 
 	userRepo := repository.NewUserRepository(pool)
 	accountRepo := repository.NewAccountRepository(pool)
@@ -67,7 +79,8 @@ func main() {
 	}, cfg.AppURL)
 
 	if err = service.SeedAdmin(ctx, userRepo, cfg.AdminUsername, cfg.AdminEmail, cfg.AdminPassword); err != nil {
-		log.Fatalf("seed admin: %v", err)
+		slog.Error("seed admin", "err", err)
+		os.Exit(1)
 	}
 
 	currencySvc.StartRateFetcher(ctx)
@@ -81,9 +94,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+		slog.Info("server listening", "port", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -91,11 +105,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down server...")
+	slog.Info("shutting down server")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server forced to shutdown: %v", err)
+		slog.Error("server forced to shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("server stopped")
+	slog.Info("server stopped")
 }
