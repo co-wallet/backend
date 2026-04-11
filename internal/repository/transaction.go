@@ -175,10 +175,17 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		return nil, err
 	}
 
-	for i := range txs {
-		txs[i].Shares, err = r.listShares(ctx, txs[i].ID)
+	if len(txs) > 0 {
+		ids := make([]string, len(txs))
+		for i := range txs {
+			ids[i] = txs[i].ID
+		}
+		sharesByTx, err := r.listSharesForTransactions(ctx, ids)
 		if err != nil {
 			return nil, err
+		}
+		for i := range txs {
+			txs[i].Shares = sharesByTx[txs[i].ID]
 		}
 	}
 	return txs, nil
@@ -277,6 +284,29 @@ func (r *TransactionRepository) upsertShares(ctx context.Context, txID string, s
 		}
 	}
 	return nil
+}
+
+func (r *TransactionRepository) listSharesForTransactions(ctx context.Context, txIDs []string) (map[string][]model.TransactionShare, error) {
+	result := make(map[string][]model.TransactionShare, len(txIDs))
+	if len(txIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT id, transaction_id, user_id, amount, is_custom
+		FROM transaction_shares WHERE transaction_id = ANY($1)`, txIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s model.TransactionShare
+		if err := rows.Scan(&s.ID, &s.TransactionID, &s.UserID, &s.Amount, &s.IsCustom); err != nil {
+			return nil, err
+		}
+		result[s.TransactionID] = append(result[s.TransactionID], s)
+	}
+	return result, rows.Err()
 }
 
 func (r *TransactionRepository) listShares(ctx context.Context, txID string) ([]model.TransactionShare, error) {

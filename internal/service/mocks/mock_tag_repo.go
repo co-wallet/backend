@@ -100,6 +100,21 @@ func (mr *MockTagRepoMockRecorder) ListForTransaction(ctx, txID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListForTransaction", reflect.TypeOf((*MockTagRepo)(nil).ListForTransaction), ctx, txID)
 }
 
+// ListForTransactions mocks base method.
+func (m *MockTagRepo) ListForTransactions(ctx context.Context, txIDs []string) (map[string][]model.Tag, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListForTransactions", ctx, txIDs)
+	ret0, _ := ret[0].(map[string][]model.Tag)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListForTransactions indicates an expected call of ListForTransactions.
+func (mr *MockTagRepoMockRecorder) ListForTransactions(ctx, txIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListForTransactions", reflect.TypeOf((*MockTagRepo)(nil).ListForTransactions), ctx, txIDs)
+}
+
 // Update mocks base method.
 func (m *MockTagRepo) Update(ctx context.Context, t model.Tag) (model.Tag, error) {
 	m.ctrl.T.Helper()
