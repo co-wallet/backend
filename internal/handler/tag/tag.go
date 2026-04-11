@@ -18,26 +18,20 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	resp := make([]tagResponse, len(tags))
-	for i, t := range tags {
-		resp[i] = tagResponse{ID: t.ID, Name: t.Name, TxCount: t.TxCount}
-	}
-	jsonResponse(w, resp, http.StatusOK)
+	jsonResponse(w, toTagWithCountResponses(tags), http.StatusOK)
 }
 
 func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	tagID := chi.URLParam(r, "tagID")
 	userID := middleware.UserIDFromCtx(r.Context())
 
-	var req struct {
-		Name string `json:"name"`
-	}
+	var req renameTagReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Name == "" {
-		jsonError(w, "name is required", http.StatusBadRequest)
+	if err := req.validate(); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -46,7 +40,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	jsonResponse(w, tagResponse{ID: t.ID, Name: t.Name}, http.StatusOK)
+	jsonResponse(w, toTagResponse(t), http.StatusOK)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -58,10 +52,4 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-type tagResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	TxCount int    `json:"txCount,omitempty"`
 }
