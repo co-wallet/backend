@@ -10,6 +10,8 @@ import (
 	"github.com/co-wallet/backend/internal/model"
 )
 
+//go:generate mockgen -source=admin.go -destination=mocks/mock_admin_repo.go -package=mocks
+
 type adminRepo interface {
 	ListUsers(ctx context.Context) ([]model.User, error)
 	GetUser(ctx context.Context, id string) (model.User, error)
@@ -20,13 +22,17 @@ type adminRepo interface {
 	UpdateCurrency(ctx context.Context, code string, patch model.CurrencyPatch) error
 }
 
-type AdminService struct {
-	repo        adminRepo
-	currencySvc *CurrencyService
+type ratesRefresher interface {
+	FetchAndStoreRates(ctx context.Context) error
 }
 
-func NewAdminService(repo adminRepo, currencySvc *CurrencyService) *AdminService {
-	return &AdminService{repo: repo, currencySvc: currencySvc}
+type AdminService struct {
+	repo  adminRepo
+	rates ratesRefresher
+}
+
+func NewAdminService(repo adminRepo, rates ratesRefresher) *AdminService {
+	return &AdminService{repo: repo, rates: rates}
 }
 
 func (s *AdminService) ListUsers(ctx context.Context) ([]model.User, error) {
@@ -101,5 +107,5 @@ func (s *AdminService) UpdateCurrency(ctx context.Context, code string, req Upda
 }
 
 func (s *AdminService) RefreshRates(ctx context.Context) error {
-	return s.currencySvc.FetchAndStoreRates(ctx)
+	return s.rates.FetchAndStoreRates(ctx)
 }

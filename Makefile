@@ -32,6 +32,10 @@ mock:
 	$(MOCKGEN) -destination=internal/service/mocks/mock_account_repo_tx.go  -package=mocks github.com/co-wallet/backend/internal/service AccountRepoForTx
 	$(MOCKGEN) -destination=internal/service/mocks/mock_category_repo.go    -package=mocks github.com/co-wallet/backend/internal/service CategoryRepo
 	$(MOCKGEN) -destination=internal/service/mocks/mock_tag_repo.go         -package=mocks github.com/co-wallet/backend/internal/service TagRepo
+	$(MOCKGEN) -source=internal/service/account.go  -destination=internal/service/mocks/mock_account_repo.go  -package=mocks
+	$(MOCKGEN) -source=internal/service/admin.go    -destination=internal/service/mocks/mock_admin_repo.go    -package=mocks
+	$(MOCKGEN) -source=internal/service/currency.go -destination=internal/service/mocks/mock_currency_repo.go -package=mocks
+	$(MOCKGEN) -source=internal/service/invite.go   -destination=internal/service/mocks/mock_invite_repo.go   -package=mocks
 	$(MOCKGEN) -source=internal/middleware/auth.go    -destination=internal/middleware/mocks/mock_token_validator.go -package=mocks
 	$(MOCKGEN) -source=internal/middleware/account.go -destination=internal/middleware/mocks/mock_member_checker.go  -package=mocks
 

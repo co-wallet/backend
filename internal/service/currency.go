@@ -9,14 +9,21 @@ import (
 	"time"
 
 	"github.com/co-wallet/backend/internal/model"
-	"github.com/co-wallet/backend/internal/repository"
 )
 
-type CurrencyService struct {
-	repo *repository.CurrencyRepository
+//go:generate mockgen -source=currency.go -destination=mocks/mock_currency_repo.go -package=mocks
+
+type currencyRepo interface {
+	ListActive(ctx context.Context, extraCodes []string) ([]model.CurrencyWithRate, error)
+	GetRate(ctx context.Context, base, quote string) (float64, error)
+	UpsertRates(ctx context.Context, base string, rates map[string]float64) error
 }
 
-func NewCurrencyService(repo *repository.CurrencyRepository) *CurrencyService {
+type CurrencyService struct {
+	repo currencyRepo
+}
+
+func NewCurrencyService(repo currencyRepo) *CurrencyService {
 	return &CurrencyService{repo: repo}
 }
 
