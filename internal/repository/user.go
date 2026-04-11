@@ -8,15 +8,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type UserRepository struct {
-	db *pgxpool.Pool
+	db db.DBTX
 }
 
-func NewUserRepository(db *pgxpool.Pool) *UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
+	return &UserRepository{db: pool}
+}
+
+// WithTx returns a copy of the repository scoped to the given transaction.
+func (r *UserRepository) WithTx(tx pgx.Tx) *UserRepository {
+	return &UserRepository{db: tx}
 }
 
 func (r *UserRepository) Create(ctx context.Context, u *model.User) error {
