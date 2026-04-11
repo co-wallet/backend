@@ -38,6 +38,15 @@ mock:
 	$(MOCKGEN) -source=internal/service/invite.go   -destination=internal/service/mocks/mock_invite_repo.go   -package=mocks
 	$(MOCKGEN) -source=internal/middleware/auth.go    -destination=internal/middleware/mocks/mock_token_validator.go -package=mocks
 	$(MOCKGEN) -source=internal/middleware/account.go -destination=internal/middleware/mocks/mock_member_checker.go  -package=mocks
+	$(MOCKGEN) -source=internal/handler/auth/handler.go        -destination=internal/handler/auth/mocks/mock_auth_service.go               -package=mocks
+	$(MOCKGEN) -source=internal/handler/transaction/handler.go -destination=internal/handler/transaction/mocks/mock_transaction_service.go -package=mocks
+	$(MOCKGEN) -source=internal/handler/account/handler.go     -destination=internal/handler/account/mocks/mock_account_service.go         -package=mocks
+	$(MOCKGEN) -source=internal/handler/category/handler.go    -destination=internal/handler/category/mocks/mock_category_service.go       -package=mocks
+	$(MOCKGEN) -source=internal/handler/tag/handler.go         -destination=internal/handler/tag/mocks/mock_tag_service.go                 -package=mocks
+	$(MOCKGEN) -source=internal/handler/invite/handler.go      -destination=internal/handler/invite/mocks/mock_invite_service.go           -package=mocks
+	$(MOCKGEN) -source=internal/handler/analytics/handler.go   -destination=internal/handler/analytics/mocks/mock_analytics_service.go     -package=mocks
+	$(MOCKGEN) -source=internal/handler/admin/handler.go       -destination=internal/handler/admin/mocks/mock_admin_service.go             -package=mocks
+	$(MOCKGEN) -source=internal/handler/currency/handler.go    -destination=internal/handler/currency/mocks/mock_currency_service.go       -package=mocks
 
 migrate:
 	GOOSE_DRIVER=pgx GOOSE_DBSTRING=$(DATABASE_URL) goose -dir $(MIGRATIONS_DIR) up
