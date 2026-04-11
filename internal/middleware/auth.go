@@ -8,6 +8,12 @@ import (
 	"github.com/co-wallet/backend/internal/service"
 )
 
+//go:generate mockgen -source=auth.go -destination=mocks/mock_token_validator.go -package=mocks
+
+type tokenValidator interface {
+	ValidateAccessToken(token string) (*service.Claims, error)
+}
+
 type contextKey string
 
 const (
@@ -15,7 +21,7 @@ const (
 	ContextIsAdmin contextKey = "isAdmin"
 )
 
-func Auth(authSvc *service.AuthService) func(http.Handler) http.Handler {
+func Auth(validator tokenValidator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -23,7 +29,7 @@ func Auth(authSvc *service.AuthService) func(http.Handler) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			claims, err := authSvc.ValidateAccessToken(strings.TrimPrefix(header, "Bearer "))
+			claims, err := validator.ValidateAccessToken(strings.TrimPrefix(header, "Bearer "))
 			if err != nil {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return

@@ -32,6 +32,8 @@ mock:
 	$(MOCKGEN) -destination=internal/service/mocks/mock_account_repo_tx.go  -package=mocks github.com/co-wallet/backend/internal/service AccountRepoForTx
 	$(MOCKGEN) -destination=internal/service/mocks/mock_category_repo.go    -package=mocks github.com/co-wallet/backend/internal/service CategoryRepo
 	$(MOCKGEN) -destination=internal/service/mocks/mock_tag_repo.go         -package=mocks github.com/co-wallet/backend/internal/service TagRepo
+	$(MOCKGEN) -source=internal/middleware/auth.go    -destination=internal/middleware/mocks/mock_token_validator.go -package=mocks
+	$(MOCKGEN) -source=internal/middleware/account.go -destination=internal/middleware/mocks/mock_member_checker.go  -package=mocks
 
 migrate:
 	GOOSE_DRIVER=pgx GOOSE_DBSTRING=$(DATABASE_URL) goose -dir $(MIGRATIONS_DIR) up
