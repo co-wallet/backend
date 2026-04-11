@@ -9,22 +9,29 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
-	"github.com/co-wallet/backend/internal/repository"
 )
 
+//go:generate mockgen -source=auth.go -destination=mocks/mock_auth_user_repo.go -package=mocks
+
+type authUserRepo interface {
+	GetByEmail(ctx context.Context, email string) (model.User, error)
+	GetByID(ctx context.Context, id string) (model.User, error)
+}
+
 type AuthService struct {
-	users     *repository.UserRepository
+	users     authUserRepo
 	jwtSecret []byte
 }
 
-func NewAuthService(users *repository.UserRepository, jwtSecret string) *AuthService {
+func NewAuthService(users authUserRepo, jwtSecret string) *AuthService {
 	return &AuthService{users: users, jwtSecret: []byte(jwtSecret)}
 }
 
 type TokenPair struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
+	AccessToken  string
+	RefreshToken string
 }
 
 type Claims struct {
@@ -33,50 +40,38 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func (s *AuthService) Register(ctx context.Context, username, email, password string) (*model.User, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
-	}
-	u := &model.User{
-		Username:        username,
-		Email:           email,
-		PasswordHash:    string(hash),
-		DefaultCurrency: "RUB",
-		IsActive:        true,
-	}
-	if err = s.users.Create(ctx, u); err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
-	}
-	return u, nil
-}
-
-func (s *AuthService) Login(ctx context.Context, email, password string) (*model.User, *TokenPair, error) {
+func (s *AuthService) Login(ctx context.Context, email, password string) (model.User, TokenPair, error) {
 	u, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, nil, errors.New("invalid credentials")
+		if errors.Is(err, apperr.ErrNotFound) {
+			return model.User{}, TokenPair{}, fmt.Errorf("invalid credentials: %w", apperr.ErrUnauthorized)
+		}
+		return model.User{}, TokenPair{}, fmt.Errorf("lookup user: %w", err)
 	}
 	if !u.IsActive {
-		return nil, nil, errors.New("account is deactivated")
+		return model.User{}, TokenPair{}, fmt.Errorf("account is deactivated: %w", apperr.ErrUnauthorized)
 	}
 	if err = bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
-		return nil, nil, errors.New("invalid credentials")
+		return model.User{}, TokenPair{}, fmt.Errorf("invalid credentials: %w", apperr.ErrUnauthorized)
 	}
 	tokens, err := s.issueTokens(u)
 	if err != nil {
-		return nil, nil, err
+		return model.User{}, TokenPair{}, err
 	}
 	return u, tokens, nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*TokenPair, error) {
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
 	claims, err := s.parseToken(refreshToken)
 	if err != nil {
-		return nil, errors.New("invalid refresh token")
+		return TokenPair{}, fmt.Errorf("invalid refresh token: %w", apperr.ErrUnauthorized)
 	}
 	u, err := s.users.GetByID(ctx, claims.UserID)
 	if err != nil {
-		return nil, errors.New("user not found")
+		if errors.Is(err, apperr.ErrNotFound) {
+			return TokenPair{}, fmt.Errorf("user not found: %w", apperr.ErrUnauthorized)
+		}
+		return TokenPair{}, fmt.Errorf("lookup user: %w", err)
 	}
 	return s.issueTokens(u)
 }
@@ -85,23 +80,23 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
 	return s.parseToken(tokenStr)
 }
 
-func (s *AuthService) IssueTokens(u *model.User) (*TokenPair, error) {
+func (s *AuthService) IssueTokens(u model.User) (TokenPair, error) {
 	return s.issueTokens(u)
 }
 
-func (s *AuthService) issueTokens(u *model.User) (*TokenPair, error) {
+func (s *AuthService) issueTokens(u model.User) (TokenPair, error) {
 	access, err := s.signToken(u, 15*time.Minute)
 	if err != nil {
-		return nil, err
+		return TokenPair{}, err
 	}
 	refresh, err := s.signToken(u, 30*24*time.Hour)
 	if err != nil {
-		return nil, err
+		return TokenPair{}, err
 	}
-	return &TokenPair{AccessToken: access, RefreshToken: refresh}, nil
+	return TokenPair{AccessToken: access, RefreshToken: refresh}, nil
 }
 
-func (s *AuthService) signToken(u *model.User, ttl time.Duration) (string, error) {
+func (s *AuthService) signToken(u model.User, ttl time.Duration) (string, error) {
 	claims := Claims{
 		UserID:  u.ID,
 		IsAdmin: u.IsAdmin,
@@ -122,7 +117,7 @@ func (s *AuthService) parseToken(tokenStr string) (*Claims, error) {
 		return s.jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, fmt.Errorf("invalid token: %w", apperr.ErrUnauthorized)
 	}
 	return claims, nil
 }

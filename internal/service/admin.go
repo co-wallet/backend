@@ -12,7 +12,7 @@ import (
 
 type adminRepo interface {
 	ListUsers(ctx context.Context) ([]model.User, error)
-	GetUser(ctx context.Context, id string) (*model.User, error)
+	GetUser(ctx context.Context, id string) (model.User, error)
 	UpdateUser(ctx context.Context, id string, patch model.AdminUserPatch) error
 	ListAllCurrencies(ctx context.Context) ([]model.CurrencyWithRate, error)
 	RateKnown(ctx context.Context, code string) (bool, error)
@@ -33,7 +33,7 @@ func (s *AdminService) ListUsers(ctx context.Context) ([]model.User, error) {
 	return s.repo.ListUsers(ctx)
 }
 
-func (s *AdminService) GetUser(ctx context.Context, id string) (*model.User, error) {
+func (s *AdminService) GetUser(ctx context.Context, id string) (model.User, error) {
 	return s.repo.GetUser(ctx, id)
 }
 

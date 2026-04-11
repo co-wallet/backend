@@ -17,7 +17,7 @@ type inviteService interface {
 	CreateInvite(ctx context.Context, email, createdBy string) (model.Invite, string, error)
 	ListInvites(ctx context.Context) ([]model.Invite, error)
 	ValidateToken(ctx context.Context, token string) (*model.Invite, error)
-	AcceptInvite(ctx context.Context, req service.AcceptInviteReq) (*model.User, *service.TokenPair, error)
+	AcceptInvite(ctx context.Context, req service.AcceptInviteReq) (model.User, service.TokenPair, error)
 }
 
 type Handler struct {
@@ -98,7 +98,19 @@ func (h *Handler) Accept(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSONResponse(w, map[string]any{
-		"user":   user,
-		"tokens": tokens,
+		"user": map[string]any{
+			"id":              user.ID,
+			"username":        user.Username,
+			"email":           user.Email,
+			"defaultCurrency": user.DefaultCurrency,
+			"isAdmin":         user.IsAdmin,
+			"isActive":        user.IsActive,
+			"createdAt":       user.CreatedAt,
+			"updatedAt":       user.UpdatedAt,
+		},
+		"tokens": map[string]string{
+			"accessToken":  tokens.AccessToken,
+			"refreshToken": tokens.RefreshToken,
+		},
 	}, http.StatusCreated)
 }

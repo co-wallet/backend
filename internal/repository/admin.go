@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
 )
 
@@ -42,8 +45,8 @@ func (r *AdminRepository) ListUsers(ctx context.Context) ([]model.User, error) {
 	return result, rows.Err()
 }
 
-func (r *AdminRepository) GetUser(ctx context.Context, id string) (*model.User, error) {
-	u := &model.User{}
+func (r *AdminRepository) GetUser(ctx context.Context, id string) (model.User, error) {
+	var u model.User
 	err := r.db.QueryRow(ctx, `
 		SELECT id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at
 		FROM users WHERE id = $1`, id,
@@ -52,8 +55,11 @@ func (r *AdminRepository) GetUser(ctx context.Context, id string) (*model.User, 
 		&u.DefaultCurrency, &u.IsAdmin, &u.IsActive,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.User{}, fmt.Errorf("%w: user", apperr.ErrNotFound)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return model.User{}, err
 	}
 	return u, nil
 }

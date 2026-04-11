@@ -14,7 +14,7 @@ import (
 
 type adminService interface {
 	ListUsers(ctx context.Context) ([]model.User, error)
-	GetUser(ctx context.Context, id string) (*model.User, error)
+	GetUser(ctx context.Context, id string) (model.User, error)
 	UpdateUser(ctx context.Context, id string, req service.AdminUpdateUserReq) error
 	ListAllCurrencies(ctx context.Context) ([]model.CurrencyWithRate, error)
 	CreateCurrency(ctx context.Context, req service.CreateCurrencyReq) error
