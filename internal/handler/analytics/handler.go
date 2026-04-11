@@ -3,8 +3,6 @@ package analytics
 import (
 	"context"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/co-wallet/backend/internal/httputil"
 	"github.com/co-wallet/backend/internal/middleware"
@@ -30,78 +28,70 @@ func New(svc analyticsService, users userSource) *Handler {
 	return &Handler{svc: svc, users: users}
 }
 
-func (h *Handler) parseFilter(r *http.Request, userID string) model.AnalyticsFilter {
-	q := r.URL.Query()
+var (
+	jsonResponse       = httputil.JSONResponse
+	jsonError          = httputil.JSONError
+	handleServiceError = httputil.HandleServiceError
+)
 
-	dateFrom := q.Get("date_from")
-	dateTo := q.Get("date_to")
-
-	now := time.Now()
-	if dateFrom == "" {
-		dateFrom = now.Format("2006-01") + "-01"
+func (h *Handler) resolveFilter(r *http.Request, userID string) (model.AnalyticsFilter, error) {
+	p, err := parseFilterParams(r.URL.Query())
+	if err != nil {
+		return model.AnalyticsFilter{}, err
 	}
-	if dateTo == "" {
-		dateTo = now.Format("2006-01-02")
-	}
-
-	var accountIDs []string
-	if raw := q.Get("account_ids"); raw != "" {
-		for _, id := range strings.Split(raw, ",") {
-			if id = strings.TrimSpace(id); id != "" {
-				accountIDs = append(accountIDs, id)
-			}
-		}
-	}
-
-	currency := q.Get("currency")
-	if currency == "" {
+	defaultCurrency := ""
+	if p.Currency == "" {
 		if u, err := h.users.GetByID(r.Context(), userID); err == nil {
-			currency = u.DefaultCurrency
+			defaultCurrency = u.DefaultCurrency
 		}
 	}
-
-	return model.AnalyticsFilter{
-		UserID:          userID,
-		DateFrom:        dateFrom,
-		DateTo:          dateTo,
-		AccountIDs:      accountIDs,
-		DisplayCurrency: currency,
-		TxType:          q.Get("type"),
-	}
+	return p.toFilter(userID, defaultCurrency), nil
 }
 
 func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := h.parseFilter(r, userID)
+	f, err := h.resolveFilter(r, userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	summary, err := h.svc.Summary(r.Context(), f)
 	if err != nil {
-		httputil.HandleServiceError(w, err)
+		handleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, toSummaryResponse(summary), http.StatusOK)
+	jsonResponse(w, toSummaryResponse(summary), http.StatusOK)
 }
 
 func (h *Handler) ByCategory(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := h.parseFilter(r, userID)
+	f, err := h.resolveFilter(r, userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	stats, err := h.svc.ByCategory(r.Context(), f)
 	if err != nil {
-		httputil.HandleServiceError(w, err)
+		handleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, toCategoryStatResponses(stats), http.StatusOK)
+	jsonResponse(w, toCategoryStatResponses(stats), http.StatusOK)
 }
 
 func (h *Handler) ByTag(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
-	f := h.parseFilter(r, userID)
+	f, err := h.resolveFilter(r, userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	stats, err := h.svc.ByTag(r.Context(), f)
 	if err != nil {
-		httputil.HandleServiceError(w, err)
+		handleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, toTagStatResponses(stats), http.StatusOK)
+	jsonResponse(w, toTagStatResponses(stats), http.StatusOK)
 }

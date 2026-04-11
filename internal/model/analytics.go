@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 type AnalyticsSummary struct {
 	Balance  float64
 	Expenses float64
@@ -21,9 +23,9 @@ type TagStat struct {
 
 type AnalyticsFilter struct {
 	UserID          string
-	DateFrom        string
-	DateTo          string
+	DateFrom        time.Time
+	DateTo          time.Time
 	AccountIDs      []string
-	DisplayCurrency string // convert all amounts to this currency (default: USD)
-	TxType          string // "expense" (default) or "income"
+	DisplayCurrency string          // convert all amounts to this currency (default: USD)
+	TxType          TransactionType // "expense" (default) or "income"
 }
