@@ -82,6 +82,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		              WHERE am.account_id = a.id AND am.user_id = $1))%s
 		      AND a.include_in_balance = true
 		      AND a.deleted_at IS NULL
+		      AND (a.initial_balance_date IS NULL OR a.initial_balance_date <= CURRENT_DATE)
 		    GROUP BY a.id, a.currency, a.initial_balance
 		),
 		transfer_in AS (
@@ -99,6 +100,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		              WHERE am.account_id = a.id AND am.user_id = $1))%s
 		      AND a.include_in_balance = true
 		      AND a.deleted_at IS NULL
+		      AND (a.initial_balance_date IS NULL OR a.initial_balance_date <= CURRENT_DATE)
 		    GROUP BY a.id
 		)
 		SELECT COALESCE(SUM(%s), 0)

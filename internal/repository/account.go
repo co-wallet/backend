@@ -182,6 +182,7 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		      AND (a.owner_id = $1 OR EXISTS (
 		               SELECT 1 FROM account_members am
 		               WHERE am.account_id = a.id AND am.user_id = $1))
+		      AND (a.initial_balance_date IS NULL OR a.initial_balance_date <= CURRENT_DATE)
 		    GROUP BY a.id, a.currency, a.initial_balance
 		),
 		transfer_in AS (
@@ -195,6 +196,7 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		      AND (a.owner_id = $1 OR EXISTS (
 		               SELECT 1 FROM account_members am
 		               WHERE am.account_id = a.id AND am.user_id = $1))
+		      AND (a.initial_balance_date IS NULL OR a.initial_balance_date <= CURRENT_DATE)
 		    GROUP BY a.id
 		)
 		SELECT
