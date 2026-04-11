@@ -79,7 +79,7 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, summary, http.StatusOK)
+	httputil.JSONResponse(w, toSummaryResponse(summary), http.StatusOK)
 }
 
 func (h *Handler) ByCategory(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func (h *Handler) ByCategory(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, stats, http.StatusOK)
+	httputil.JSONResponse(w, toCategoryStatResponses(stats), http.StatusOK)
 }
 
 func (h *Handler) ByTag(w http.ResponseWriter, r *http.Request) {
@@ -103,5 +103,5 @@ func (h *Handler) ByTag(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, stats, http.StatusOK)
+	httputil.JSONResponse(w, toTagStatResponses(stats), http.StatusOK)
 }
