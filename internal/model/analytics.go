@@ -1,22 +1,22 @@
 package model
 
 type AnalyticsSummary struct {
-	Balance  float64 `json:"balance"`
-	Expenses float64 `json:"expenses"`
-	Income   float64 `json:"income"`
+	Balance  float64
+	Expenses float64
+	Income   float64
 }
 
 type CategoryStat struct {
-	CategoryID   string  `json:"categoryId"`
-	CategoryName string  `json:"categoryName"`
-	Icon         *string `json:"icon,omitempty"`
-	Amount       float64 `json:"amount"`
+	CategoryID   string
+	CategoryName string
+	Icon         *string
+	Amount       float64
 }
 
 type TagStat struct {
-	TagID   string  `json:"tagId"`
-	TagName string  `json:"tagName"`
-	Amount  float64 `json:"amount"`
+	TagID   string
+	TagName string
+	Amount  float64
 }
 
 type AnalyticsFilter struct {

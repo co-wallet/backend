@@ -45,9 +45,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSONResponse(w, map[string]any{
-		"invite":    inv,
-		"inviteUrl": inviteURL,
+	httputil.JSONResponse(w, CreateInviteResponse{
+		Invite:    toInviteResponse(inv),
+		InviteURL: inviteURL,
 	}, http.StatusCreated)
 }
 
@@ -58,7 +58,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, invites, http.StatusOK)
+	httputil.JSONResponse(w, toInviteResponses(invites), http.StatusOK)
 }
 
 // GET /api/invites/:token — validate token (public)
@@ -97,20 +97,8 @@ func (h *Handler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSONResponse(w, map[string]any{
-		"user": map[string]any{
-			"id":              user.ID,
-			"username":        user.Username,
-			"email":           user.Email,
-			"defaultCurrency": user.DefaultCurrency,
-			"isAdmin":         user.IsAdmin,
-			"isActive":        user.IsActive,
-			"createdAt":       user.CreatedAt,
-			"updatedAt":       user.UpdatedAt,
-		},
-		"tokens": map[string]string{
-			"accessToken":  tokens.AccessToken,
-			"refreshToken": tokens.RefreshToken,
-		},
+	httputil.JSONResponse(w, AcceptInviteResponse{
+		User:   toUserResponse(user),
+		Tokens: toTokenPairResponse(tokens),
 	}, http.StatusCreated)
 }

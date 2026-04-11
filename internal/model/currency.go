@@ -3,17 +3,17 @@ package model
 import "time"
 
 type Currency struct {
-	Code     string  `json:"code"`
-	Name     string  `json:"name"`
-	Symbol   *string `json:"symbol,omitempty"`
-	IsActive bool    `json:"isActive"`
+	Code     string
+	Name     string
+	Symbol   *string
+	IsActive bool
 }
 
 type ExchangeRate struct {
-	BaseCurrency  string    `json:"baseCurrency"`
-	QuoteCurrency string    `json:"quoteCurrency"`
-	Rate          float64   `json:"rate"`
-	FetchedAt     time.Time `json:"fetchedAt"`
+	BaseCurrency  string
+	QuoteCurrency string
+	Rate          float64
+	FetchedAt     time.Time
 }
 
 type CurrencyPatch struct {
@@ -22,8 +22,8 @@ type CurrencyPatch struct {
 	IsActive *bool
 }
 
-// CurrencyWithRate is returned by the API — active currency with rate relative to USD.
+// CurrencyWithRate is returned by services — active currency with rate relative to USD.
 type CurrencyWithRate struct {
 	Currency
-	RateToUSD float64 `json:"rateToUsd"`
+	RateToUSD float64
 }

@@ -36,7 +36,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, users, http.StatusOK)
+	httputil.JSONResponse(w, toAdminUserResponses(users), http.StatusOK)
 }
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, user, http.StatusOK)
+	httputil.JSONResponse(w, toAdminUserResponse(user), http.StatusOK)
 }
 
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func (h *Handler) ListCurrencies(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, currencies, http.StatusOK)
+	httputil.JSONResponse(w, toCurrencyResponses(currencies), http.StatusOK)
 }
 
 func (h *Handler) CreateCurrency(w http.ResponseWriter, r *http.Request) {

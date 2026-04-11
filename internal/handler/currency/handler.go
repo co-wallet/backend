@@ -36,5 +36,5 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleServiceError(w, err)
 		return
 	}
-	httputil.JSONResponse(w, currencies, http.StatusOK)
+	httputil.JSONResponse(w, toCurrencyResponses(currencies), http.StatusOK)
 }
