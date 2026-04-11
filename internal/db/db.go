@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -36,11 +37,20 @@ func WithTx(ctx context.Context, pool TxBeginner, fn func(pgx.Tx) error) (err er
 	}
 	defer func() {
 		if p := recover(); p != nil {
+			// Откат при панике — best-effort. Мы уже раскручиваем панику и
+			// всё равно не можем вернуть ошибку вызывающему: важнее сохранить
+			// исходное panic-значение, чем ошибку отката.
 			_ = tx.Rollback(ctx)
 			panic(p)
 		}
 		if err != nil {
-			_ = tx.Rollback(ctx)
+			rbErr := tx.Rollback(ctx)
+			// pgx.ErrTxClosed означает, что транзакция уже закрыта (например,
+			// pgx сам откатил её при ошибке Commit) — это штатное состояние,
+			// а не реальная ошибка отката.
+			if rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+				err = errors.Join(err, fmt.Errorf("rollback: %w", rbErr))
+			}
 		}
 	}()
 	if err = fn(tx); err != nil {

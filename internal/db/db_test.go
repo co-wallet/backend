@@ -84,6 +84,33 @@ func TestWithTx_RollbackOnPanic(t *testing.T) {
 	require.False(t, tx.committed)
 }
 
+func TestWithTx_RollbackErrorJoined(t *testing.T) {
+	fnErr := errors.New("fn failed")
+	rbErr := errors.New("rollback failed")
+	tx := &fakeTx{rollbackErr: rbErr}
+	b := &fakeBeginner{tx: tx}
+
+	err := WithTx(context.Background(), b, func(pgx.Tx) error {
+		return fnErr
+	})
+
+	require.ErrorIs(t, err, fnErr, "original fn error must be preserved")
+	require.ErrorIs(t, err, rbErr, "rollback error must be joined")
+}
+
+func TestWithTx_RollbackTxClosedIgnored(t *testing.T) {
+	fnErr := errors.New("fn failed")
+	tx := &fakeTx{rollbackErr: pgx.ErrTxClosed}
+	b := &fakeBeginner{tx: tx}
+
+	err := WithTx(context.Background(), b, func(pgx.Tx) error {
+		return fnErr
+	})
+
+	require.ErrorIs(t, err, fnErr)
+	require.NotErrorIs(t, err, pgx.ErrTxClosed, "ErrTxClosed from rollback must be swallowed")
+}
+
 func TestWithTx_BeginError(t *testing.T) {
 	boom := errors.New("no conn")
 	b := &fakeBeginner{err: boom}
