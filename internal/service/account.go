@@ -14,14 +14,45 @@ import (
 	"github.com/co-wallet/backend/internal/repository"
 )
 
+//go:generate mockgen -source=account.go -destination=mocks/mock_account_repo.go -package=mocks
+
+type accountRepo interface {
+	ListByUser(ctx context.Context, userID string) ([]model.Account, error)
+	ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error)
+	GetByID(ctx context.Context, id string) (model.Account, error)
+	Create(ctx context.Context, a model.Account) (model.Account, error)
+	Update(ctx context.Context, a model.Account) (model.Account, error)
+	SoftDelete(ctx context.Context, id string) error
+	GetMembers(ctx context.Context, accountID string) ([]model.AccountMember, error)
+	AddMember(ctx context.Context, m model.AccountMember) error
+	UpdateMemberShare(ctx context.Context, accountID, userID string, share float64) error
+	RemoveMember(ctx context.Context, accountID, userID string) error
+}
+
+type accountUserRepo interface {
+	GetByUsername(ctx context.Context, username string) (model.User, error)
+}
+
+// accountTxRunner runs fn inside a DB transaction; fn receives a transaction-scoped
+// accountRepo. Extracted as a function field so tests can supply a stub runner.
+type accountTxRunner func(ctx context.Context, fn func(accountRepo) error) error
+
 type AccountService struct {
-	pool     *pgxpool.Pool
-	accounts *repository.AccountRepository
-	users    *repository.UserRepository
+	accounts accountRepo
+	users    accountUserRepo
+	withTx   accountTxRunner
 }
 
 func NewAccountService(pool *pgxpool.Pool, accounts *repository.AccountRepository, users *repository.UserRepository) *AccountService {
-	return &AccountService{pool: pool, accounts: accounts, users: users}
+	return &AccountService{
+		accounts: accounts,
+		users:    users,
+		withTx: func(ctx context.Context, fn func(accountRepo) error) error {
+			return db.WithTx(ctx, pool, func(tx pgx.Tx) error {
+				return fn(accounts.WithTx(tx))
+			})
+		},
+	}
 }
 
 func (s *AccountService) ListByUser(ctx context.Context, userID string) ([]model.Account, error) {
@@ -49,9 +80,7 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	}
 
 	var created model.Account
-	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		accountsTx := s.accounts.WithTx(tx)
-
+	err := s.withTx(ctx, func(accountsTx accountRepo) error {
 		var innerErr error
 		created, innerErr = accountsTx.Create(ctx, a)
 		if innerErr != nil {

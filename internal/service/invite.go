@@ -19,6 +19,19 @@ import (
 	"github.com/co-wallet/backend/internal/repository"
 )
 
+//go:generate mockgen -source=invite.go -destination=mocks/mock_invite_repo.go -package=mocks
+
+type inviteRepo interface {
+	Create(ctx context.Context, inv model.Invite) error
+	GetByToken(ctx context.Context, token string) (*model.Invite, error)
+	MarkUsed(ctx context.Context, token string) error
+	ListAll(ctx context.Context) ([]model.Invite, error)
+}
+
+type inviteUserRepo interface {
+	Create(ctx context.Context, u model.User) (model.User, error)
+}
+
 type SMTPConfig struct {
 	Host string
 	Port string
@@ -27,17 +40,32 @@ type SMTPConfig struct {
 	From string
 }
 
+// inviteTxRunner runs fn inside a DB transaction; fn receives transaction-scoped
+// inviteRepo and inviteUserRepo. Extracted as a function field so tests can supply a stub.
+type inviteTxRunner func(ctx context.Context, fn func(inviteRepo, inviteUserRepo) error) error
+
 type InviteService struct {
-	pool   *pgxpool.Pool
-	repo   *repository.InviteRepository
-	users  *repository.UserRepository
+	repo   inviteRepo
+	users  inviteUserRepo
 	auth   *AuthService
 	smtp   SMTPConfig
 	appURL string
+	withTx inviteTxRunner
 }
 
-func NewInviteService(pool *pgxpool.Pool, repo *repository.InviteRepository, users *repository.UserRepository, auth *AuthService, smtp SMTPConfig, appURL string) *InviteService {
-	return &InviteService{pool: pool, repo: repo, users: users, auth: auth, smtp: smtp, appURL: appURL}
+func NewInviteService(pool *pgxpool.Pool, repo *repository.InviteRepository, users *repository.UserRepository, auth *AuthService, smtpCfg SMTPConfig, appURL string) *InviteService {
+	return &InviteService{
+		repo:   repo,
+		users:  users,
+		auth:   auth,
+		smtp:   smtpCfg,
+		appURL: appURL,
+		withTx: func(ctx context.Context, fn func(inviteRepo, inviteUserRepo) error) error {
+			return db.WithTx(ctx, pool, func(tx pgx.Tx) error {
+				return fn(repo.WithTx(tx), users.WithTx(tx))
+			})
+		},
+	}
 }
 
 // CreateInvite generates an invite token, stores it, and optionally sends an email.
@@ -139,8 +167,8 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 	}
 
 	var created model.User
-	if err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		u, createErr := s.users.WithTx(tx).Create(ctx, model.User{
+	if err := s.withTx(ctx, func(invRepo inviteRepo, userRepo inviteUserRepo) error {
+		u, createErr := userRepo.Create(ctx, model.User{
 			Username:        req.Username,
 			Email:           inv.Email,
 			PasswordHash:    string(hash),
@@ -152,7 +180,7 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 			return fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
 		}
 		created = u
-		if markErr := s.repo.WithTx(tx).MarkUsed(ctx, req.Token); markErr != nil {
+		if markErr := invRepo.MarkUsed(ctx, req.Token); markErr != nil {
 			return fmt.Errorf("mark invite used: %w", markErr)
 		}
 		return nil
