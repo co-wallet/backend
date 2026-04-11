@@ -15,6 +15,7 @@ type TagRepo interface {
 	Delete(ctx context.Context, id, userID string) error
 	UpsertForTransaction(ctx context.Context, txID, userID string, names []string) ([]model.Tag, error)
 	ListForTransaction(ctx context.Context, txID string) ([]model.Tag, error)
+	ListForTransactions(ctx context.Context, txIDs []string) (map[string][]model.Tag, error)
 }
 
 type TagService struct {

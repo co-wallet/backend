@@ -166,3 +166,31 @@ func (r *TagRepository) ListForTransaction(ctx context.Context, txID string) ([]
 	}
 	return tags, rows.Err()
 }
+
+// ListForTransactions returns tags linked to each transaction in one query,
+// grouped by transaction ID. Used to avoid N+1 when loading a transaction list.
+func (r *TagRepository) ListForTransactions(ctx context.Context, txIDs []string) (map[string][]model.Tag, error) {
+	result := make(map[string][]model.Tag, len(txIDs))
+	if len(txIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT tt.transaction_id, t.id, t.user_id, t.name, t.created_at
+		FROM tags t
+		JOIN transaction_tags tt ON tt.tag_id = t.id
+		WHERE tt.transaction_id = ANY($1)`, txIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var txID string
+		var t model.Tag
+		if err := rows.Scan(&txID, &t.ID, &t.UserID, &t.Name, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[txID] = append(result[txID], t)
+	}
+	return result, rows.Err()
+}

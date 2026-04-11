@@ -108,11 +108,19 @@ func (s *TransactionService) List(ctx context.Context, userID string, f model.Tr
 	if err != nil {
 		return nil, err
 	}
+	if len(txs) == 0 {
+		return txs, nil
+	}
+	ids := make([]string, len(txs))
 	for i := range txs {
-		txs[i].Tags, err = s.tags.ListForTransaction(ctx, txs[i].ID)
-		if err != nil {
-			return nil, err
-		}
+		ids[i] = txs[i].ID
+	}
+	tagsByTx, err := s.tags.ListForTransactions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range txs {
+		txs[i].Tags = tagsByTx[txs[i].ID]
 	}
 	return txs, nil
 }

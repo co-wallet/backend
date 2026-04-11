@@ -411,14 +411,25 @@ func (s *TransactionServiceSuite) TestList_LoadsTags() {
 		{ID: "tx-1", AccountID: "acc-1"},
 		{ID: "tx-2", AccountID: "acc-1"},
 	}, nil)
-	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx-1").Return([]model.Tag{{ID: "t1", Name: "food"}}, nil)
-	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx-2").Return(nil, nil)
+	s.tagRepo.EXPECT().ListForTransactions(ctx, []string{"tx-1", "tx-2"}).Return(map[string][]model.Tag{
+		"tx-1": {{ID: "t1", Name: "food"}},
+	}, nil)
 
 	txs, err := s.svc.List(ctx, userID, model.TransactionFilter{})
 	s.NoError(err)
 	s.Len(txs, 2)
 	s.Len(txs[0].Tags, 1)
 	s.Equal("food", txs[0].Tags[0].Name)
+	s.Empty(txs[1].Tags)
+}
+
+func (s *TransactionServiceSuite) TestList_EmptyResult_NoBatchTagCall() {
+	ctx := context.Background()
+	s.repo.EXPECT().List(ctx, "user-1", gomock.Any()).Return([]model.Transaction{}, nil)
+
+	txs, err := s.svc.List(ctx, "user-1", model.TransactionFilter{})
+	s.NoError(err)
+	s.Empty(txs)
 }
 
 func (s *TransactionServiceSuite) TestList_RepoError_Propagated() {
