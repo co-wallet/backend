@@ -10,6 +10,7 @@ import (
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
 	adminhandler "github.com/co-wallet/backend/internal/handler/admin"
 	analyticshandler "github.com/co-wallet/backend/internal/handler/analytics"
+	authhandler "github.com/co-wallet/backend/internal/handler/auth"
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	currencyhandler "github.com/co-wallet/backend/internal/handler/currency"
 	invitehandler "github.com/co-wallet/backend/internal/handler/invite"
@@ -22,6 +23,7 @@ import (
 
 func newRouter(
 	authSvc *service.AuthService,
+	userSvc *service.UserService,
 	accountSvc *service.AccountService,
 	categorySvc *service.CategoryService,
 	transactionSvc *service.TransactionService,
@@ -30,15 +32,14 @@ func newRouter(
 	currencySvc *service.CurrencyService,
 	adminSvc *service.AdminService,
 	inviteSvc *service.InviteService,
-	userRepo *repository.UserRepository,
 	accountRepo *repository.AccountRepository,
 ) http.Handler {
-	authHandler := handler.NewAuthHandler(authSvc, userRepo)
-	accountHandler := accounthandler.New(accountSvc, userRepo)
+	authHandler := authhandler.New(authSvc, userSvc)
+	accountHandler := accounthandler.New(accountSvc, userSvc)
 	categoryHandler := categoryhandler.New(categorySvc)
 	transactionHandler := transactionhandler.New(transactionSvc)
 	tagHandler := taghandler.New(tagSvc)
-	analyticsHandler := analyticshandler.New(analyticsSvc, userRepo)
+	analyticsHandler := analyticshandler.New(analyticsSvc, userSvc)
 	currencyHandler := currencyhandler.New(currencySvc)
 	adminHandler := adminhandler.New(adminSvc)
 	inviteHandler := invitehandler.New(inviteSvc)

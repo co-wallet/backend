@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
@@ -25,30 +26,34 @@ func (r *UserRepository) WithTx(tx pgx.Tx) *UserRepository {
 	return &UserRepository{db: tx}
 }
 
-func (r *UserRepository) Create(ctx context.Context, u *model.User) error {
+func (r *UserRepository) Create(ctx context.Context, u model.User) (model.User, error) {
 	query := `
 		INSERT INTO users (username, email, password_hash, default_currency, is_admin, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at`
-	return r.db.QueryRow(ctx, query,
+	err := r.db.QueryRow(ctx, query,
 		u.Username, u.Email, u.PasswordHash,
 		u.DefaultCurrency, u.IsAdmin, u.IsActive,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return model.User{}, err
+	}
+	return u, nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id string) (*model.User, error) {
+func (r *UserRepository) GetByID(ctx context.Context, id string) (model.User, error) {
 	return r.scanOne(ctx,
 		`SELECT id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at
 		 FROM users WHERE id = $1 AND is_active = true`, id)
 }
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (model.User, error) {
 	return r.scanOne(ctx,
 		`SELECT id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at
 		 FROM users WHERE email = $1`, email)
 }
 
-func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (model.User, error) {
 	return r.scanOne(ctx,
 		`SELECT id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at
 		 FROM users WHERE username = $1`, username)
@@ -88,15 +93,18 @@ func (r *UserRepository) UpdateCurrency(ctx context.Context, id, currency string
 	return err
 }
 
-func (r *UserRepository) scanOne(ctx context.Context, query string, args ...any) (*model.User, error) {
-	u := &model.User{}
+func (r *UserRepository) scanOne(ctx context.Context, query string, args ...any) (model.User, error) {
+	var u model.User
 	err := r.db.QueryRow(ctx, query, args...).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.DefaultCurrency, &u.IsAdmin, &u.IsActive,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("user not found")
+		return model.User{}, fmt.Errorf("%w: user", apperr.ErrNotFound)
 	}
-	return u, err
+	if err != nil {
+		return model.User{}, err
+	}
+	return u, nil
 }

@@ -49,6 +49,7 @@ func main() {
 	adminRepo := repository.NewAdminRepository(pool)
 	inviteRepo := repository.NewInviteRepository(pool)
 
+	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	accountSvc := service.NewAccountService(pool, accountRepo, userRepo)
 	categorySvc := service.NewCategoryService(categoryRepo)
@@ -73,7 +74,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      newRouter(authSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, inviteSvc, userRepo, accountRepo),
+		Handler:      newRouter(authSvc, userSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, inviteSvc, accountRepo),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

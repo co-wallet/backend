@@ -31,7 +31,7 @@ func SeedAdmin(ctx context.Context, users *repository.UserRepository, username, 
 		return fmt.Errorf("hash admin password: %w", err)
 	}
 
-	admin := &model.User{
+	admin := model.User{
 		Username:        username,
 		Email:           email,
 		PasswordHash:    string(hash),
@@ -39,7 +39,7 @@ func SeedAdmin(ctx context.Context, users *repository.UserRepository, username, 
 		IsAdmin:         true,
 		IsActive:        true,
 	}
-	if err = users.Create(ctx, admin); err != nil {
+	if _, err = users.Create(ctx, admin); err != nil {
 		return fmt.Errorf("create admin: %w", err)
 	}
 	log.Printf("[INIT] Admin account created: %s (%s)", username, email)

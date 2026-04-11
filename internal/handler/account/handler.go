@@ -9,7 +9,7 @@ import (
 )
 
 type userSource interface {
-	GetByID(ctx context.Context, id string) (*model.User, error)
+	GetByID(ctx context.Context, id string) (model.User, error)
 }
 
 type Handler struct {

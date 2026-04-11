@@ -111,21 +111,21 @@ func (s *InviteService) ValidateToken(ctx context.Context, token string) (*model
 }
 
 type AcceptInviteReq struct {
-	Token           string `json:"token"`
-	Username        string `json:"username"`
-	Password        string `json:"password"`
-	DefaultCurrency string `json:"defaultCurrency"`
+	Token           string
+	Username        string
+	Password        string
+	DefaultCurrency string
 }
 
-func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (*model.User, *TokenPair, error) {
+func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (model.User, TokenPair, error) {
 	inv, err := s.ValidateToken(ctx, req.Token)
 	if err != nil {
-		return nil, nil, err
+		return model.User{}, TokenPair{}, err
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
 	if req.Username == "" || len(req.Password) < 8 {
-		return nil, nil, fmt.Errorf("%w: username and password (min 8 chars) required", apperr.ErrValidation)
+		return model.User{}, TokenPair{}, fmt.Errorf("%w: username and password (min 8 chars) required", apperr.ErrValidation)
 	}
 
 	currency := strings.ToUpper(strings.TrimSpace(req.DefaultCurrency))
@@ -135,34 +135,35 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, nil, fmt.Errorf("hash password: %w", err)
+		return model.User{}, TokenPair{}, fmt.Errorf("hash password: %w", err)
 	}
 
-	u := &model.User{
-		Username:        req.Username,
-		Email:           inv.Email,
-		PasswordHash:    string(hash),
-		DefaultCurrency: currency,
-		IsAdmin:         false,
-		IsActive:        true,
-	}
-
+	var created model.User
 	if err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if createErr := s.users.WithTx(tx).Create(ctx, u); createErr != nil {
+		u, createErr := s.users.WithTx(tx).Create(ctx, model.User{
+			Username:        req.Username,
+			Email:           inv.Email,
+			PasswordHash:    string(hash),
+			DefaultCurrency: currency,
+			IsAdmin:         false,
+			IsActive:        true,
+		})
+		if createErr != nil {
 			return fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
 		}
+		created = u
 		if markErr := s.repo.WithTx(tx).MarkUsed(ctx, req.Token); markErr != nil {
 			return fmt.Errorf("mark invite used: %w", markErr)
 		}
 		return nil
 	}); err != nil {
-		return nil, nil, err
+		return model.User{}, TokenPair{}, err
 	}
 
-	tokens, err := s.auth.IssueTokens(u)
+	tokens, err := s.auth.IssueTokens(created)
 	if err != nil {
-		return nil, nil, err
+		return model.User{}, TokenPair{}, err
 	}
 
-	return u, tokens, nil
+	return created, tokens, nil
 }
