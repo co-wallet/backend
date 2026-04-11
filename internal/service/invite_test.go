@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
@@ -185,12 +186,25 @@ func (s *InviteServiceSuite) TestAcceptInvite_DuplicateUser() {
 	s.repo.EXPECT().GetByToken(gomock.Any(), "tok").Return(s.validInvite(), nil)
 	s.users.EXPECT().
 		Create(gomock.Any(), gomock.Any()).
-		Return(model.User{}, errors.New("unique violation"))
+		Return(model.User{}, &pgconn.PgError{Code: "23505"})
 
 	_, _, err := s.svc.AcceptInvite(context.Background(), AcceptInviteReq{
 		Token: "tok", Username: "alice", Password: "strong-password",
 	})
 	s.True(errors.Is(err, apperr.ErrConflict))
+}
+
+func (s *InviteServiceSuite) TestAcceptInvite_CreateUserGenericError() {
+	s.repo.EXPECT().GetByToken(gomock.Any(), "tok").Return(s.validInvite(), nil)
+	s.users.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(model.User{}, errors.New("db offline"))
+
+	_, _, err := s.svc.AcceptInvite(context.Background(), AcceptInviteReq{
+		Token: "tok", Username: "alice", Password: "strong-password",
+	})
+	s.Error(err)
+	s.False(errors.Is(err, apperr.ErrConflict))
 }
 
 func (s *InviteServiceSuite) TestAcceptInvite_InvalidToken() {

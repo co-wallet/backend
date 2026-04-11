@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -23,7 +23,8 @@ func SeedAdmin(ctx context.Context, users *repository.UserRepository, username, 
 
 	if password == "" {
 		password = uuid.New().String()
-		log.Printf("[INIT] No ADMIN_PASSWORD set. Generated admin password: %s", password)
+		slog.Warn("generated random admin password — set ADMIN_PASSWORD env var",
+			"component", "seed", "password", password)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -42,6 +43,6 @@ func SeedAdmin(ctx context.Context, users *repository.UserRepository, username, 
 	if _, err = users.Create(ctx, admin); err != nil {
 		return fmt.Errorf("create admin: %w", err)
 	}
-	log.Printf("[INIT] Admin account created: %s (%s)", username, email)
+	slog.Info("admin account created", "component", "seed", "username", username, "email", email)
 	return nil
 }

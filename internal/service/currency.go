@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -68,7 +68,7 @@ func (s *CurrencyService) FetchAndStoreRates(ctx context.Context) error {
 		return fmt.Errorf("store rates: %w", err)
 	}
 
-	log.Printf("[currency] fetched %d exchange rates", len(data.Rates))
+	slog.Info("fetched exchange rates", "component", "currency", "count", len(data.Rates))
 	return nil
 }
 
@@ -77,7 +77,7 @@ func (s *CurrencyService) StartRateFetcher(ctx context.Context) {
 	go func() {
 		// Fetch immediately on startup
 		if err := s.FetchAndStoreRates(ctx); err != nil {
-			log.Printf("[currency] initial rate fetch failed: %v", err)
+			slog.Error("initial rate fetch failed", "component", "currency", "err", err)
 		}
 
 		ticker := time.NewTicker(2 * time.Hour)
@@ -88,7 +88,7 @@ func (s *CurrencyService) StartRateFetcher(ctx context.Context) {
 				return
 			case <-ticker.C:
 				if err := s.FetchAndStoreRates(ctx); err != nil {
-					log.Printf("[currency] rate fetch failed: %v", err)
+					slog.Error("rate fetch failed", "component", "currency", "err", err)
 				}
 			}
 		}
