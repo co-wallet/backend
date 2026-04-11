@@ -155,8 +155,8 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 	displayCurrency := f.DisplayCurrency
 
 	txType := f.TxType
-	if txType != "income" {
-		txType = "expense"
+	if txType != model.TransactionTypeIncome {
+		txType = model.TransactionTypeExpense
 	}
 
 	args := []any{f.UserID}
@@ -164,9 +164,10 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
 
 	dispIdx := idx
-	dateFrom := idx + 1
-	dateTo := idx + 2
-	args = append(args, displayCurrency, f.DateFrom, f.DateTo)
+	dateFromIdx := idx + 1
+	dateToIdx := idx + 2
+	txTypeIdx := idx + 3
+	args = append(args, displayCurrency, f.DateFrom, f.DateTo, txType)
 
 	q := fmt.Sprintf(`
 		SELECT c.id, c.name, c.icon, COALESCE(SUM(%s), 0) AS amount
@@ -179,16 +180,16 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
-		  AND t.type = '%s'
+		  AND t.type = $%d
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		GROUP BY c.id, c.name, c.icon
 		ORDER BY amount DESC`,
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
-		txType,
-		dateFrom,
-		dateTo,
+		txTypeIdx,
+		dateFromIdx,
+		dateToIdx,
 	)
 
 	rows, err := r.db.Query(ctx, q, args...)
