@@ -9,15 +9,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type InviteRepository struct {
-	db *pgxpool.Pool
+	db db.DBTX
 }
 
-func NewInviteRepository(db *pgxpool.Pool) *InviteRepository {
-	return &InviteRepository{db: db}
+func NewInviteRepository(pool *pgxpool.Pool) *InviteRepository {
+	return &InviteRepository{db: pool}
+}
+
+// WithTx returns a copy of the repository scoped to the given transaction.
+func (r *InviteRepository) WithTx(tx pgx.Tx) *InviteRepository {
+	return &InviteRepository{db: tx}
 }
 
 func (r *InviteRepository) Create(ctx context.Context, inv model.Invite) error {

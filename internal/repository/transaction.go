@@ -9,18 +9,39 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type TransactionRepository struct {
-	db *pgxpool.Pool
+	pool *pgxpool.Pool // nil when repo is already scoped to a tx
+	db   db.DBTX
 }
 
-func NewTransactionRepository(db *pgxpool.Pool) *TransactionRepository {
-	return &TransactionRepository{db: db}
+func NewTransactionRepository(pool *pgxpool.Pool) *TransactionRepository {
+	return &TransactionRepository{pool: pool, db: pool}
+}
+
+// WithTx returns a copy of the repository scoped to the given transaction.
+// Methods on the returned repository will not start new transactions.
+func (r *TransactionRepository) WithTx(tx pgx.Tx) *TransactionRepository {
+	return &TransactionRepository{db: tx}
 }
 
 func (r *TransactionRepository) Create(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
+	if r.pool == nil {
+		return r.createLocked(ctx, tx)
+	}
+	var result model.Transaction
+	err := db.WithTx(ctx, r.pool, func(pgxTx pgx.Tx) error {
+		var innerErr error
+		result, innerErr = r.WithTx(pgxTx).createLocked(ctx, tx)
+		return innerErr
+	})
+	return result, err
+}
+
+func (r *TransactionRepository) createLocked(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO transactions
 		    (account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
@@ -35,7 +56,6 @@ func (r *TransactionRepository) Create(ctx context.Context, tx model.Transaction
 	if err != nil {
 		return model.Transaction{}, err
 	}
-
 	if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 		return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 	}
@@ -66,8 +86,6 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 }
 
 func (r *TransactionRepository) List(ctx context.Context, userID string, f model.TransactionFilter) ([]model.Transaction, error) {
-	// Build a query that returns transactions where the user is a member of the account
-	// or is the creator, filtered by the provided criteria.
 	args := []any{userID}
 	q := `
 		SELECT DISTINCT t.id, t.account_id, t.to_account_id, t.to_amount, t.type, t.amount, t.currency,
@@ -109,14 +127,12 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 	}
 	if len(f.TagIDs) > 0 {
 		if f.TagMode == "and" {
-			// Transaction must have ALL specified tags
 			for _, tagID := range f.TagIDs {
 				q += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id AND tt.tag_id = $%d)`, n)
 				args = append(args, tagID)
 				n++
 			}
 		} else {
-			// OR mode: transaction must have at least one of the tags
 			q += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id AND tt.tag_id = ANY($%d))`, n)
 			args = append(args, f.TagIDs)
 			n++
@@ -159,7 +175,6 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		return nil, err
 	}
 
-	// Load shares per transaction
 	for i := range txs {
 		txs[i].Shares, err = r.listShares(ctx, txs[i].ID)
 		if err != nil {
@@ -170,6 +185,19 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 }
 
 func (r *TransactionRepository) Update(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
+	if r.pool == nil {
+		return r.updateLocked(ctx, tx)
+	}
+	var result model.Transaction
+	err := db.WithTx(ctx, r.pool, func(pgxTx pgx.Tx) error {
+		var innerErr error
+		result, innerErr = r.WithTx(pgxTx).updateLocked(ctx, tx)
+		return innerErr
+	})
+	return result, err
+}
+
+func (r *TransactionRepository) updateLocked(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE transactions
 		SET amount = $2, to_amount = $3, category_id = $4, description = $5,

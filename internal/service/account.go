@@ -3,21 +3,25 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 	"github.com/co-wallet/backend/internal/repository"
 )
 
 type AccountService struct {
+	pool     *pgxpool.Pool
 	accounts *repository.AccountRepository
 	users    *repository.UserRepository
 }
 
-func NewAccountService(accounts *repository.AccountRepository, users *repository.UserRepository) *AccountService {
-	return &AccountService{accounts: accounts, users: users}
+func NewAccountService(pool *pgxpool.Pool, accounts *repository.AccountRepository, users *repository.UserRepository) *AccountService {
+	return &AccountService{pool: pool, accounts: accounts, users: users}
 }
 
 func (s *AccountService) ListByUser(ctx context.Context, userID string) ([]model.Account, error) {
@@ -43,22 +47,31 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 		InitialBalance:     req.InitialBalance,
 		InitialBalanceDate: req.InitialBalanceDate,
 	}
-	created, err := s.accounts.Create(ctx, a)
-	if err != nil {
-		return model.Account{}, fmt.Errorf("create account: %w", err)
-	}
 
-	// Auto-add owner as member of shared accounts with 100% share
-	if created.Type == model.AccountTypeShared {
-		if err := s.accounts.AddMember(ctx, model.AccountMember{
-			AccountID:    created.ID,
-			UserID:       ownerID,
-			DefaultShare: 1.0,
-		}); err != nil {
-			return model.Account{}, fmt.Errorf("add owner as member: %w", err)
+	var created model.Account
+	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		accountsTx := s.accounts.WithTx(tx)
+
+		var innerErr error
+		created, innerErr = accountsTx.Create(ctx, a)
+		if innerErr != nil {
+			return fmt.Errorf("create account: %w", innerErr)
 		}
-	}
 
+		if created.Type == model.AccountTypeShared {
+			if innerErr = accountsTx.AddMember(ctx, model.AccountMember{
+				AccountID:    created.ID,
+				UserID:       ownerID,
+				DefaultShare: 1.0,
+			}); innerErr != nil {
+				return fmt.Errorf("add owner as member: %w", innerErr)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Account{}, err
+	}
 	return created, nil
 }
 
@@ -89,7 +102,7 @@ func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, re
 func (s *AccountService) DeleteAccount(ctx context.Context, requesterID, accountID string) error {
 	a, err := s.accounts.GetByID(ctx, accountID)
 	if err != nil {
-		return err // already wrapped with ErrNotFound from repo
+		return err
 	}
 	if a.OwnerID != requesterID {
 		return fmt.Errorf("only the owner can delete an account: %w", apperr.ErrForbidden)
@@ -113,9 +126,6 @@ func (s *AccountService) AddMember(ctx context.Context, accountID, username stri
 
 	members, err := s.accounts.GetMembers(ctx, accountID)
 	if err != nil {
-		if rollbackErr := s.accounts.RemoveMember(ctx, accountID, u.ID); rollbackErr != nil {
-			log.Printf("rollback RemoveMember failed for account=%s user=%s: %v", accountID, u.ID, rollbackErr)
-		}
 		return nil, fmt.Errorf("fetch members after add: %w", err)
 	}
 	return members, nil

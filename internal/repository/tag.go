@@ -9,15 +9,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type TagRepository struct {
-	db *pgxpool.Pool
+	pool *pgxpool.Pool
+	db   db.DBTX
 }
 
-func NewTagRepository(db *pgxpool.Pool) *TagRepository {
-	return &TagRepository{db: db}
+func NewTagRepository(pool *pgxpool.Pool) *TagRepository {
+	return &TagRepository{pool: pool, db: pool}
+}
+
+func (r *TagRepository) WithTx(tx pgx.Tx) *TagRepository {
+	return &TagRepository{db: tx}
 }
 
 func (r *TagRepository) ListByUser(ctx context.Context, userID string, q string) ([]model.TagWithCount, error) {
@@ -92,9 +98,22 @@ func (r *TagRepository) Delete(ctx context.Context, id, userID string) error {
 }
 
 // UpsertForTransaction upserts tags by name for a user and links them to the transaction.
-// Any tags previously linked to the transaction are replaced.
+// Any tags previously linked to the transaction are replaced. Runs inside a single
+// DB transaction so partial failures don't leave orphaned links.
 func (r *TagRepository) UpsertForTransaction(ctx context.Context, txID, userID string, names []string) ([]model.Tag, error) {
-	// Remove existing links
+	if r.pool == nil {
+		return r.upsertForTransactionLocked(ctx, txID, userID, names)
+	}
+	var result []model.Tag
+	err := db.WithTx(ctx, r.pool, func(pgxTx pgx.Tx) error {
+		var innerErr error
+		result, innerErr = r.WithTx(pgxTx).upsertForTransactionLocked(ctx, txID, userID, names)
+		return innerErr
+	})
+	return result, err
+}
+
+func (r *TagRepository) upsertForTransactionLocked(ctx context.Context, txID, userID string, names []string) ([]model.Tag, error) {
 	if _, err := r.db.Exec(ctx, `DELETE FROM transaction_tags WHERE transaction_id = $1`, txID); err != nil {
 		return nil, err
 	}

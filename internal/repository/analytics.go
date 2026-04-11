@@ -64,6 +64,8 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		        a.id,
 		        a.currency,
 		        a.initial_balance
+		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
+		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
 		        + COALESCE(SUM(CASE WHEN t.type = 'income'   AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
 		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
 		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
@@ -82,7 +84,10 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		transfer_in AS (
 		    SELECT
 		        a.id,
-		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN COALESCE(t.to_amount, t.amount) ELSE 0 END), 0) AS amount
+		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN COALESCE(t.to_amount, t.amount) ELSE 0 END), 0)
+		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
+		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
+		            AS amount
 		    FROM accounts a
 		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
 		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)

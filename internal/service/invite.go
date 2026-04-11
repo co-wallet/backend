@@ -9,24 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/repository"
 )
-
-type inviteRepo interface {
-	Create(ctx context.Context, inv model.Invite) error
-	GetByToken(ctx context.Context, token string) (*model.Invite, error)
-	MarkUsed(ctx context.Context, token string) error
-	ListAll(ctx context.Context) ([]model.Invite, error)
-}
-
-type inviteUserRepo interface {
-	Create(ctx context.Context, u *model.User) error
-	GetByEmail(ctx context.Context, email string) (*model.User, error)
-	GetByUsername(ctx context.Context, username string) (*model.User, error)
-}
 
 type SMTPConfig struct {
 	Host string
@@ -37,15 +28,16 @@ type SMTPConfig struct {
 }
 
 type InviteService struct {
-	repo     inviteRepo
-	users    inviteUserRepo
-	auth     *AuthService
-	smtp     SMTPConfig
-	appURL   string
+	pool   *pgxpool.Pool
+	repo   *repository.InviteRepository
+	users  *repository.UserRepository
+	auth   *AuthService
+	smtp   SMTPConfig
+	appURL string
 }
 
-func NewInviteService(repo inviteRepo, users inviteUserRepo, auth *AuthService, smtp SMTPConfig, appURL string) *InviteService {
-	return &InviteService{repo: repo, users: users, auth: auth, smtp: smtp, appURL: appURL}
+func NewInviteService(pool *pgxpool.Pool, repo *repository.InviteRepository, users *repository.UserRepository, auth *AuthService, smtp SMTPConfig, appURL string) *InviteService {
+	return &InviteService{pool: pool, repo: repo, users: users, auth: auth, smtp: smtp, appURL: appURL}
 }
 
 // CreateInvite generates an invite token, stores it, and optionally sends an email.
@@ -154,12 +146,17 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 		IsAdmin:         false,
 		IsActive:        true,
 	}
-	if err := s.users.Create(ctx, u); err != nil {
-		return nil, nil, fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
-	}
 
-	if err := s.repo.MarkUsed(ctx, req.Token); err != nil {
-		return nil, nil, fmt.Errorf("mark invite used: %w", err)
+	if err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		if createErr := s.users.WithTx(tx).Create(ctx, u); createErr != nil {
+			return fmt.Errorf("%w: username or email already taken", apperr.ErrConflict)
+		}
+		if markErr := s.repo.WithTx(tx).MarkUsed(ctx, req.Token); markErr != nil {
+			return fmt.Errorf("mark invite used: %w", markErr)
+		}
+		return nil
+	}); err != nil {
+		return nil, nil, err
 	}
 
 	tokens, err := s.auth.IssueTokens(u)

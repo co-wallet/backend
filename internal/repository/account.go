@@ -8,15 +8,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 )
 
 type AccountRepository struct {
-	db *pgxpool.Pool
+	db db.DBTX
 }
 
-func NewAccountRepository(db *pgxpool.Pool) *AccountRepository {
-	return &AccountRepository{db: db}
+func NewAccountRepository(pool *pgxpool.Pool) *AccountRepository {
+	return &AccountRepository{db: pool}
+}
+
+// WithTx returns a copy of the repository scoped to the given transaction.
+func (r *AccountRepository) WithTx(tx pgx.Tx) *AccountRepository {
+	return &AccountRepository{db: tx}
 }
 
 // ListByUser returns all non-deleted accounts where user is owner or member.

@@ -50,14 +50,14 @@ func main() {
 	inviteRepo := repository.NewInviteRepository(pool)
 
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
-	accountSvc := service.NewAccountService(accountRepo, userRepo)
+	accountSvc := service.NewAccountService(pool, accountRepo, userRepo)
 	categorySvc := service.NewCategoryService(categoryRepo)
 	tagSvc := service.NewTagService(tagRepo)
 	transactionSvc := service.NewTransactionService(transactionRepo, accountRepo, tagRepo)
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 	currencySvc := service.NewCurrencyService(currencyRepo)
 	adminSvc := service.NewAdminService(adminRepo, currencySvc)
-	inviteSvc := service.NewInviteService(inviteRepo, userRepo, authSvc, service.SMTPConfig{
+	inviteSvc := service.NewInviteService(pool, inviteRepo, userRepo, authSvc, service.SMTPConfig{
 		Host: cfg.SMTPHost,
 		Port: cfg.SMTPPort,
 		User: cfg.SMTPUser,
