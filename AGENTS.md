@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Инструкции для Codex при работе с backend-репозиторием **co-wallet**.
+Инструкции по работе с backend-репозиторием **co-wallet**.
 
 ## Назначение и стек
 
-Go API для самохостируемого приложения семейных финансов. Репозиторий входит в multi-root workspace; рядом находятся `../frontend`, `../docker` и `../docs`.
+Go API приложения для учёта личных и семейных финансов.
 
 - Go 1.25, chi, pgx/v5, goose, PostgreSQL 16.
 - Путь модуля: `github.com/co-wallet/backend`.
@@ -64,4 +64,4 @@ make migrate-down # откатить одну миграцию
 - Проверять happy path, validation, not-found, conflict и authorization сценарии.
 - Моки генерируются из интерфейсов; не редактировать generated-файлы вручную.
 
-Перед публикацией PR выполнить `make test`, `make lint` и `make generate` по необходимости. После изменений пересобрать стек командой `docker compose build && docker compose up -d` из `../docker`.
+Перед публикацией PR выполнить `make test`, `make lint` и `make generate` по необходимости. После изменений пересобрать стек командой `docker compose build && docker compose up -d` в репозитории Docker-конфигурации проекта.
