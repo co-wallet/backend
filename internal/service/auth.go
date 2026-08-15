@@ -35,10 +35,16 @@ type TokenPair struct {
 }
 
 type Claims struct {
-	UserID  string `json:"userId"`
-	IsAdmin bool   `json:"isAdmin"`
+	UserID    string `json:"userId"`
+	IsAdmin   bool   `json:"isAdmin"`
+	TokenType string `json:"tokenType"`
 	jwt.RegisteredClaims
 }
+
+const (
+	tokenTypeAccess  = "access"
+	tokenTypeRefresh = "refresh"
+)
 
 func (s *AuthService) Login(ctx context.Context, email, password string) (model.User, TokenPair, error) {
 	u, err := s.users.GetByEmail(ctx, email)
@@ -62,7 +68,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (model.
 }
 
 func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
-	claims, err := s.parseToken(refreshToken)
+	claims, err := s.parseToken(refreshToken, tokenTypeRefresh)
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("invalid refresh token: %w", apperr.ErrUnauthorized)
 	}
@@ -73,11 +79,14 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (TokenPa
 		}
 		return TokenPair{}, fmt.Errorf("lookup user: %w", err)
 	}
+	if !u.IsActive {
+		return TokenPair{}, fmt.Errorf("account is deactivated: %w", apperr.ErrUnauthorized)
+	}
 	return s.issueTokens(u)
 }
 
 func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
-	return s.parseToken(tokenStr)
+	return s.parseToken(tokenStr, tokenTypeAccess)
 }
 
 func (s *AuthService) IssueTokens(u model.User) (TokenPair, error) {
@@ -85,21 +94,22 @@ func (s *AuthService) IssueTokens(u model.User) (TokenPair, error) {
 }
 
 func (s *AuthService) issueTokens(u model.User) (TokenPair, error) {
-	access, err := s.signToken(u, 15*time.Minute)
+	access, err := s.signToken(u, 15*time.Minute, tokenTypeAccess)
 	if err != nil {
 		return TokenPair{}, err
 	}
-	refresh, err := s.signToken(u, 30*24*time.Hour)
+	refresh, err := s.signToken(u, 30*24*time.Hour, tokenTypeRefresh)
 	if err != nil {
 		return TokenPair{}, err
 	}
 	return TokenPair{AccessToken: access, RefreshToken: refresh}, nil
 }
 
-func (s *AuthService) signToken(u model.User, ttl time.Duration) (string, error) {
+func (s *AuthService) signToken(u model.User, ttl time.Duration, tokenType string) (string, error) {
 	claims := Claims{
-		UserID:  u.ID,
-		IsAdmin: u.IsAdmin,
+		UserID:    u.ID,
+		IsAdmin:   u.IsAdmin,
+		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -108,15 +118,15 @@ func (s *AuthService) signToken(u model.User, ttl time.Duration) (string, error)
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
 }
 
-func (s *AuthService) parseToken(tokenStr string) (*Claims, error) {
+func (s *AuthService) parseToken(tokenStr, expectedType string) (*Claims, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return s.jwtSecret, nil
 	})
-	if err != nil || !token.Valid {
+	if err != nil || !token.Valid || claims.TokenType != expectedType {
 		return nil, fmt.Errorf("invalid token: %w", apperr.ErrUnauthorized)
 	}
 	return claims, nil

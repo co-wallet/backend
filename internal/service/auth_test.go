@@ -96,6 +96,15 @@ func (s *AuthServiceSuite) TestRefresh_InvalidToken() {
 	s.True(errors.Is(err, apperr.ErrUnauthorized))
 }
 
+func (s *AuthServiceSuite) TestRefresh_RejectsAccessToken() {
+	u := s.activeUserWithPassword("secret123")
+	tokens, err := s.svc.IssueTokens(u)
+	s.NoError(err)
+
+	_, err = s.svc.Refresh(context.Background(), tokens.AccessToken)
+	s.ErrorIs(err, apperr.ErrUnauthorized)
+}
+
 func (s *AuthServiceSuite) TestRefresh_UserNotFound() {
 	u := s.activeUserWithPassword("secret123")
 	tokens, err := s.svc.IssueTokens(u)
@@ -107,6 +116,18 @@ func (s *AuthServiceSuite) TestRefresh_UserNotFound() {
 	s.True(errors.Is(err, apperr.ErrUnauthorized))
 }
 
+func (s *AuthServiceSuite) TestRefresh_InactiveUser() {
+	u := s.activeUserWithPassword("secret123")
+	tokens, err := s.svc.IssueTokens(u)
+	s.NoError(err)
+
+	u.IsActive = false
+	s.repo.EXPECT().GetByID(gomock.Any(), "u1").Return(u, nil)
+
+	_, err = s.svc.Refresh(context.Background(), tokens.RefreshToken)
+	s.ErrorIs(err, apperr.ErrUnauthorized)
+}
+
 func (s *AuthServiceSuite) TestValidateAccessToken_Success() {
 	u := s.activeUserWithPassword("secret123")
 	tokens, err := s.svc.IssueTokens(u)
@@ -116,9 +137,19 @@ func (s *AuthServiceSuite) TestValidateAccessToken_Success() {
 	s.NoError(err)
 	s.Equal("u1", claims.UserID)
 	s.False(claims.IsAdmin)
+	s.Equal(tokenTypeAccess, claims.TokenType)
 }
 
 func (s *AuthServiceSuite) TestValidateAccessToken_Invalid() {
 	_, err := s.svc.ValidateAccessToken("not.a.token")
 	s.True(errors.Is(err, apperr.ErrUnauthorized))
+}
+
+func (s *AuthServiceSuite) TestValidateAccessToken_RejectsRefreshToken() {
+	u := s.activeUserWithPassword("secret123")
+	tokens, err := s.svc.IssueTokens(u)
+	s.NoError(err)
+
+	_, err = s.svc.ValidateAccessToken(tokens.RefreshToken)
+	s.ErrorIs(err, apperr.ErrUnauthorized)
 }
