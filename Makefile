@@ -3,7 +3,7 @@ MIGRATIONS_DIR=migrations
 MOCKGEN=$(shell go env GOPATH)/bin/mockgen
 LOG_FILE=/tmp/cowallet-backend.log
 
-.PHONY: build run restart stop test lint migrate migrate-down migrate-status mock
+.PHONY: build run restart stop test lint generate migrate migrate-down migrate-status mock
 
 build:
 	go build -o $(BINARY) ./cmd/server
@@ -22,10 +22,13 @@ stop:
 	@echo "backend stopped"
 
 test:
-	go test ./...
+	go test ./... -race
 
 lint:
 	golangci-lint run ./...
+
+generate:
+	go generate ./...
 
 mock:
 	$(MOCKGEN) -destination=internal/service/mocks/mock_transaction_repo.go -package=mocks github.com/co-wallet/backend/internal/service TransactionRepo
