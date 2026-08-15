@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/co-wallet/backend/internal/apperr"
@@ -160,7 +160,7 @@ func (s *InviteService) AcceptInvite(ctx context.Context, req AcceptInviteReq) (
 
 	currency := strings.ToUpper(strings.TrimSpace(req.DefaultCurrency))
 	if currency == "" {
-		currency = "USD"
+		currency = "RUB"
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)

@@ -147,12 +147,12 @@ func (s *InviteServiceSuite) TestAcceptInvite_Success() {
 	s.NotEmpty(tokens.RefreshToken)
 }
 
-func (s *InviteServiceSuite) TestAcceptInvite_DefaultCurrencyFallsBackToUSD() {
+func (s *InviteServiceSuite) TestAcceptInvite_DefaultCurrencyFallsBackToRUB() {
 	s.repo.EXPECT().GetByToken(gomock.Any(), "tok").Return(s.validInvite(), nil)
 	s.users.EXPECT().
 		Create(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, u model.User) (model.User, error) {
-			s.Equal("USD", u.DefaultCurrency)
+			s.Equal("RUB", u.DefaultCurrency)
 			u.ID = "u"
 			return u, nil
 		})
@@ -227,4 +227,3 @@ func (s *InviteServiceSuite) TestListInvites_NilNormalizedToEmpty() {
 	s.NotNil(got)
 	s.Empty(got)
 }
-

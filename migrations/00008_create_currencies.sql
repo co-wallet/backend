@@ -18,24 +18,7 @@ CREATE TABLE exchange_rates (
 INSERT INTO currencies (code, name, symbol) VALUES
     ('USD', 'US Dollar',          '$'),
     ('EUR', 'Euro',               '€'),
-    ('RUB', 'Russian Ruble',      '₽'),
-    ('GBP', 'British Pound',      '£'),
-    ('CNY', 'Chinese Yuan',       '¥'),
-    ('JPY', 'Japanese Yen',       '¥'),
-    ('CHF', 'Swiss Franc',        '₣'),
-    ('CAD', 'Canadian Dollar',    'C$'),
-    ('AUD', 'Australian Dollar',  'A$'),
-    ('AED', 'UAE Dirham',         'د.إ'),
-    ('TRY', 'Turkish Lira',       '₺'),
-    ('KZT', 'Kazakhstani Tenge',  '₸'),
-    ('BYN', 'Belarusian Ruble',   'Br'),
-    ('GEL', 'Georgian Lari',      '₾'),
-    ('AMD', 'Armenian Dram',      '֏'),
-    ('UZS', 'Uzbekistani Som',    'soʻm'),
-    ('UAH', 'Ukrainian Hryvnia',  '₴'),
-    ('PLN', 'Polish Zloty',       'zł'),
-    ('CZK', 'Czech Koruna',       'Kč'),
-    ('HUF', 'Hungarian Forint',   'Ft');
+    ('RUB', 'Russian Ruble',      '₽');
 
 -- +goose Down
 DROP TABLE exchange_rates;
