@@ -33,6 +33,19 @@ func accountFilter(accountIDs []string, args []any, idx int) (string, []any, int
 	return fmt.Sprintf(" AND a.id IN (%s)", strings.Join(ph, ",")), args, idx
 }
 
+func accountKindFilter(kinds []model.AccountKind, args []any, idx int) (string, []any, int) {
+	if len(kinds) == 0 {
+		return "", args, idx
+	}
+	ph := make([]string, len(kinds))
+	for i, kind := range kinds {
+		ph[i] = fmt.Sprintf("$%d", idx)
+		args = append(args, kind)
+		idx++
+	}
+	return fmt.Sprintf(" AND a.kind IN (%s)", strings.Join(ph, ",")), args, idx
+}
+
 // convertExpr returns a SQL expression that converts `amount_expr` from `from_currency_col`
 // to the display currency at position `displayCurrencyIdx`.
 // Formula: amount * rate(USD→display) / rate(USD→from_currency)
@@ -56,6 +69,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	bArgs := []any{f.UserID}
 	bIdx := 2
 	bAcctCond, bArgs, bIdx := accountFilter(f.AccountIDs, bArgs, bIdx)
+	bKindCond, bArgs, bIdx := accountKindFilter(f.AccountKinds, bArgs, bIdx)
 
 	// display currency is the next arg
 	dispIdx := bIdx
@@ -79,8 +93,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		    LEFT JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		    WHERE (a.owner_id = $1 OR EXISTS (
 		              SELECT 1 FROM account_members am
-		              WHERE am.account_id = a.id AND am.user_id = $1))%s
-		      AND a.include_in_balance = true
+		              WHERE am.account_id = a.id AND am.user_id = $1))%s%s
 		      AND a.deleted_at IS NULL
 		    GROUP BY a.id, a.currency, a.initial_balance
 		),
@@ -96,8 +109,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
 		    WHERE (a.owner_id = $1 OR EXISTS (
 		              SELECT 1 FROM account_members am
-		              WHERE am.account_id = a.id AND am.user_id = $1))%s
-		      AND a.include_in_balance = true
+		              WHERE am.account_id = a.id AND am.user_id = $1))%s%s
 		      AND a.deleted_at IS NULL
 		    GROUP BY a.id
 		)
@@ -105,7 +117,9 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		FROM account_balances ab
 		LEFT JOIN transfer_in ti ON ti.id = ab.id`,
 		bAcctCond,
+		bKindCond,
 		bAcctCond,
+		bKindCond,
 		convertExpr("ab.balance_native + COALESCE(ti.amount, 0)", "ab.currency", dispIdx),
 	)
 
@@ -118,6 +132,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	pArgs := []any{f.UserID}
 	pIdx := 2
 	pAcctCond, pArgs, pIdx := accountFilter(f.AccountIDs, pArgs, pIdx)
+	pKindCond, pArgs, pIdx := accountKindFilter(f.AccountKinds, pArgs, pIdx)
 
 	pDispIdx := pIdx
 	dateFromIdx := pIdx + 1
@@ -133,7 +148,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		JOIN accounts a ON a.id = t.account_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.date >= $%d::date
@@ -142,6 +157,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		convertExpr("ts.amount", "t.currency", pDispIdx),
 		convertExpr("ts.amount", "t.currency", pDispIdx),
 		pAcctCond,
+		pKindCond,
 		dateFromIdx,
 		dateToIdx,
 	)
@@ -165,6 +181,7 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 	args := []any{f.UserID}
 	idx := 2
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
+	kindCond, args, idx := accountKindFilter(f.AccountKinds, args, idx)
 
 	dispIdx := idx
 	dateFromIdx := idx + 1
@@ -180,7 +197,7 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		JOIN categories c ON c.id = t.category_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.type = $%d
@@ -190,6 +207,7 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		ORDER BY amount DESC`,
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
+		kindCond,
 		txTypeIdx,
 		dateFromIdx,
 		dateToIdx,
@@ -218,6 +236,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	args := []any{f.UserID}
 	idx := 2
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
+	kindCond, args, idx := accountKindFilter(f.AccountKinds, args, idx)
 
 	dispIdx := idx
 	dateFrom := idx + 1
@@ -233,7 +252,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		JOIN tags tg ON tg.id = tt.tag_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.type = 'expense'
@@ -243,6 +262,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		ORDER BY amount DESC`,
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
+		kindCond,
 		dateFrom,
 		dateTo,
 	)

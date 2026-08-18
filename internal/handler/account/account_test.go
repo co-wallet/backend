@@ -60,7 +60,7 @@ func (s *AccountHandlerSuite) TestList_WithDefaultCurrency() {
 		Return(model.User{ID: "u1", DefaultCurrency: "USD"}, nil)
 	s.svc.EXPECT().
 		ListByUser(gomock.Any(), "u1").
-		Return([]model.Account{{ID: "a1", Type: model.AccountTypePersonal}}, nil)
+		Return([]model.Account{{ID: "a1", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindCurrent}}, nil)
 	s.svc.EXPECT().
 		ListBalancesByUser(gomock.Any(), "u1", "USD").
 		Return(map[string]model.AccountBalance{
@@ -95,20 +95,23 @@ func (s *AccountHandlerSuite) TestCreate_Success() {
 		DoAndReturn(func(_ context.Context, _ string, req model.CreateAccountReq) (model.Account, error) {
 			s.Equal("Wallet", req.Name)
 			s.Equal("USD", req.Currency)
-			s.Equal(model.AccountTypePersonal, req.Type)
-			return model.Account{ID: "a1", Name: "Wallet", Type: model.AccountTypePersonal, Currency: "USD"}, nil
+			s.Equal(model.AccountAccessModePersonal, req.AccessMode)
+			s.Equal(model.AccountKindCurrent, req.Kind)
+			return model.Account{ID: "a1", Name: "Wallet", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindCurrent, Currency: "USD"}, nil
 		})
 
-	body := `{"name":"Wallet","type":"personal","currency":"usd","initialBalanceDate":"2025-01-01"}`
+	body := `{"name":"Wallet","accessMode":"personal","currency":"usd","initialBalanceDate":"2025-01-01"}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader(body)), "u1")
 	rec := httptest.NewRecorder()
 	s.h.Create(rec, req)
 	s.Equal(http.StatusCreated, rec.Code)
 	s.Contains(rec.Body.String(), `"a1"`)
+	s.Contains(rec.Body.String(), `"accessMode":"personal"`)
+	s.Contains(rec.Body.String(), `"kind":"current"`)
 }
 
 func (s *AccountHandlerSuite) TestCreate_ValidationError() {
-	body := `{"name":"","type":"personal","currency":"USD","initialBalanceDate":"2025-01-01"}`
+	body := `{"name":"","accessMode":"personal","currency":"USD","initialBalanceDate":"2025-01-01"}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader(body)), "u1")
 	rec := httptest.NewRecorder()
 	s.h.Create(rec, req)
@@ -125,7 +128,7 @@ func (s *AccountHandlerSuite) TestCreate_InvalidJSON() {
 func (s *AccountHandlerSuite) TestGet_PersonalSuccess() {
 	s.svc.EXPECT().
 		GetByID(gomock.Any(), "a1").
-		Return(model.Account{ID: "a1", Type: model.AccountTypePersonal}, nil)
+		Return(model.Account{ID: "a1", AccessMode: model.AccountAccessModePersonal}, nil)
 
 	req := withAccountParam(withUser(httptest.NewRequest(http.MethodGet, "/accounts/a1", nil), "u1"), "a1")
 	rec := httptest.NewRecorder()
@@ -137,7 +140,7 @@ func (s *AccountHandlerSuite) TestGet_PersonalSuccess() {
 func (s *AccountHandlerSuite) TestGet_SharedWithMembers() {
 	s.svc.EXPECT().
 		GetByID(gomock.Any(), "a1").
-		Return(model.Account{ID: "a1", Type: model.AccountTypeShared}, nil)
+		Return(model.Account{ID: "a1", AccessMode: model.AccountAccessModeShared}, nil)
 	s.svc.EXPECT().
 		GetMembers(gomock.Any(), "a1").
 		Return([]model.AccountMember{{AccountID: "a1", UserID: "u1", Username: "alice", DefaultShare: 1}}, nil)
@@ -166,7 +169,7 @@ func (s *AccountHandlerSuite) TestUpdate_Success() {
 		DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateAccountReq) (model.Account, error) {
 			s.NotNil(req.Name)
 			s.Equal("New", *req.Name)
-			return model.Account{ID: "a1", Name: "New", Type: model.AccountTypePersonal}, nil
+			return model.Account{ID: "a1", Name: "New", AccessMode: model.AccountAccessModePersonal}, nil
 		})
 
 	body := `{"name":"New"}`
@@ -176,20 +179,29 @@ func (s *AccountHandlerSuite) TestUpdate_Success() {
 	s.Equal(http.StatusOK, rec.Code)
 }
 
-func (s *AccountHandlerSuite) TestUpdate_PassesRequestedType() {
+func (s *AccountHandlerSuite) TestUpdate_PassesRequestedAccessMode() {
 	s.svc.EXPECT().
 		UpdateAccount(gomock.Any(), "u1", "a1", gomock.Any()).
 		DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateAccountReq) (model.Account, error) {
-			s.Require().NotNil(req.Type)
-			s.Equal(model.AccountTypeShared, *req.Type)
-			return model.Account{ID: "a1", Type: model.AccountTypeShared}, nil
+			s.Require().NotNil(req.AccessMode)
+			s.Equal(model.AccountAccessModeShared, *req.AccessMode)
+			return model.Account{ID: "a1", AccessMode: model.AccountAccessModeShared}, nil
 		})
 
-	body := `{"type":"shared"}`
+	body := `{"accessMode":"shared"}`
 	req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
 	rec := httptest.NewRecorder()
 	s.h.Update(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
+}
+
+func (s *AccountHandlerSuite) TestUpdate_RejectsKindChange() {
+	body := `{"kind":"investment"}`
+	req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
+	rec := httptest.NewRecorder()
+	s.h.Update(rec, req)
+	s.Equal(http.StatusBadRequest, rec.Code)
+	s.Contains(rec.Body.String(), "kind cannot be changed")
 }
 
 func (s *AccountHandlerSuite) TestUpdate_InvalidDate() {

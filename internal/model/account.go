@@ -2,21 +2,37 @@ package model
 
 import "time"
 
-type AccountType string
+type AccountAccessMode string
 
 const (
-	AccountTypePersonal AccountType = "personal"
-	AccountTypeShared   AccountType = "shared"
+	AccountAccessModePersonal AccountAccessMode = "personal"
+	AccountAccessModeShared   AccountAccessMode = "shared"
 )
+
+func (m AccountAccessMode) IsValid() bool {
+	return m == AccountAccessModePersonal || m == AccountAccessModeShared
+}
+
+type AccountKind string
+
+const (
+	AccountKindCurrent    AccountKind = "current"
+	AccountKindDeposit    AccountKind = "deposit"
+	AccountKindInvestment AccountKind = "investment"
+)
+
+func (k AccountKind) IsValid() bool {
+	return k == AccountKindCurrent || k == AccountKindDeposit || k == AccountKindInvestment
+}
 
 type Account struct {
 	ID                 string
 	OwnerID            string
 	Name               string
-	Type               AccountType
+	AccessMode         AccountAccessMode
+	Kind               AccountKind
 	Currency           string
 	Icon               *string
-	IncludeInBalance   bool
 	InitialBalance     float64
 	InitialBalanceDate time.Time
 	DeletedAt          *time.Time
@@ -47,19 +63,18 @@ type AccountBalance struct {
 
 type CreateAccountReq struct {
 	Name               string
-	Type               AccountType
+	AccessMode         AccountAccessMode
+	Kind               AccountKind
 	Currency           string
 	Icon               *string
-	IncludeInBalance   bool
 	InitialBalance     float64
 	InitialBalanceDate time.Time
 }
 
 type UpdateAccountReq struct {
 	Name               *string
-	Type               *AccountType
+	AccessMode         *AccountAccessMode
 	Icon               *string
-	IncludeInBalance   *bool
 	InitialBalance     *float64
 	InitialBalanceDate *time.Time // nil = don't update
 }

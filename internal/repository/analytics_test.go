@@ -1,9 +1,31 @@
 package repository
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/co-wallet/backend/internal/model"
 )
+
+func TestAccountKindFilter(t *testing.T) {
+	condition, args, next := accountKindFilter(
+		[]model.AccountKind{model.AccountKindCurrent, model.AccountKindInvestment},
+		[]any{"user-id"},
+		2,
+	)
+
+	if condition != " AND a.kind IN ($2,$3)" {
+		t.Fatalf("unexpected condition: %q", condition)
+	}
+	wantArgs := []any{"user-id", model.AccountKindCurrent, model.AccountKindInvestment}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+	if next != 4 {
+		t.Fatalf("unexpected next placeholder: %d", next)
+	}
+}
 
 // TestConvertExprWrapsAmountInParens гарантирует, что составные выражения
 // (сумма/разность) не ломают приоритет операторов SQL: весь amountExpr должен

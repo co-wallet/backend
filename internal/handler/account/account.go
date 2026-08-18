@@ -77,7 +77,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if a.Type == model.AccountTypeShared {
+	if a.AccessMode == model.AccountAccessModeShared {
 		members, err := h.service.GetMembers(r.Context(), accountID)
 		if err != nil {
 			handleServiceError(w, err)
@@ -104,11 +104,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updateReq := model.UpdateAccountReq{
-		Name:             req.Name,
-		Type:             req.Type,
-		Icon:             req.Icon,
-		IncludeInBalance: req.IncludeInBalance,
-		InitialBalance:   req.InitialBalance,
+		Name:           req.Name,
+		AccessMode:     req.AccessMode,
+		Icon:           req.Icon,
+		InitialBalance: req.InitialBalance,
 	}
 	if req.InitialBalanceDate != nil {
 		t, _ := time.Parse("2006-01-02", *req.InitialBalanceDate)

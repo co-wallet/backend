@@ -27,6 +27,7 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, now.Format("2006-01")+"-01", p.DateFrom.Format(dateLayout))
 				assert.Equal(t, now.Format(dateLayout), p.DateTo.Format(dateLayout))
 				assert.Nil(t, p.AccountIDs)
+				assert.Equal(t, []model.AccountKind{model.AccountKindCurrent}, p.AccountKinds)
 				assert.Empty(t, p.Currency)
 				assert.Empty(t, string(p.TxType))
 			},
@@ -34,19 +35,33 @@ func TestParseFilterParams(t *testing.T) {
 		{
 			name: "valid full payload",
 			query: url.Values{
-				"date_from":   {"2026-01-01"},
-				"date_to":     {"2026-01-31"},
-				"account_ids": {validUUID + "," + validUUID},
-				"currency":    {"eur"},
-				"type":        {"income"},
+				"date_from":     {"2026-01-01"},
+				"date_to":       {"2026-01-31"},
+				"account_ids":   {validUUID + "," + validUUID},
+				"account_kinds": {"current,investment,current"},
+				"currency":      {"eur"},
+				"type":          {"income"},
 			},
 			check: func(t *testing.T, p filterParams) {
 				assert.Equal(t, "2026-01-01", p.DateFrom.Format(dateLayout))
 				assert.Equal(t, "2026-01-31", p.DateTo.Format(dateLayout))
 				assert.Equal(t, []string{validUUID, validUUID}, p.AccountIDs)
+				assert.Equal(t, []model.AccountKind{model.AccountKindCurrent, model.AccountKindInvestment}, p.AccountKinds)
 				assert.Equal(t, "EUR", p.Currency)
 				assert.Equal(t, model.TransactionTypeIncome, p.TxType)
 			},
+		},
+		{
+			name:  "all account kinds removes kind restriction",
+			query: url.Values{"account_kinds": {"all"}},
+			check: func(t *testing.T, p filterParams) {
+				assert.Nil(t, p.AccountKinds)
+			},
+		},
+		{
+			name:    "invalid account kind",
+			query:   url.Values{"account_kinds": {"current,crypto"}},
+			wantErr: "account_kinds must contain 'current', 'deposit', or 'investment'",
 		},
 		{
 			name:    "invalid date_from",
@@ -127,6 +142,7 @@ func TestFilterParams_ToFilter(t *testing.T) {
 		assert.Equal(t, df, f.DateFrom)
 		assert.Equal(t, dt, f.DateTo)
 		assert.Equal(t, model.TransactionTypeExpense, f.TxType)
+		assert.Equal(t, p.AccountKinds, f.AccountKinds)
 	})
 
 	t.Run("falls back to default currency", func(t *testing.T) {
