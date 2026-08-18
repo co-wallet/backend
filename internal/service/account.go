@@ -23,6 +23,7 @@ type accountRepo interface {
 	Create(ctx context.Context, a model.Account) (model.Account, error)
 	Update(ctx context.Context, a model.Account) (model.Account, error)
 	SoftDelete(ctx context.Context, id string) error
+	HasTransactions(ctx context.Context, accountID string) (bool, error)
 	GetMembers(ctx context.Context, accountID string) ([]model.AccountMember, error)
 	AddMember(ctx context.Context, m model.AccountMember) error
 	UpdateMemberShare(ctx context.Context, accountID, userID string, share float64) error
@@ -104,28 +105,91 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	return created, nil
 }
 
-func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, req model.UpdateAccountReq) (model.Account, error) {
-	a, err := s.accounts.GetByID(ctx, accountID)
+func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, accountID string, req model.UpdateAccountReq) (model.Account, error) {
+	var updated model.Account
+	err := s.withTx(ctx, func(accountsTx accountRepo) error {
+		a, err := accountsTx.GetByID(ctx, accountID)
+		if err != nil {
+			return err
+		}
+
+		typeChanged := req.Type != nil && *req.Type != a.Type
+		if typeChanged {
+			if requesterID != a.OwnerID {
+				return fmt.Errorf("only the owner can change account type: %w", apperr.ErrForbidden)
+			}
+			if *req.Type == model.AccountTypePersonal {
+				if err = ensureSharedAccountCanBecomePersonal(ctx, accountsTx, a); err != nil {
+					return err
+				}
+			}
+			a.Type = *req.Type
+		}
+
+		if req.Name != nil {
+			a.Name = strings.TrimSpace(*req.Name)
+		}
+		if req.Icon != nil {
+			a.Icon = req.Icon
+		}
+		if req.IncludeInBalance != nil {
+			a.IncludeInBalance = *req.IncludeInBalance
+		}
+		if req.InitialBalance != nil {
+			a.InitialBalance = *req.InitialBalance
+		}
+		if req.InitialBalanceDate != nil {
+			a.InitialBalanceDate = *req.InitialBalanceDate
+		}
+
+		updated, err = accountsTx.Update(ctx, a)
+		if err != nil {
+			return fmt.Errorf("update account: %w", err)
+		}
+
+		if !typeChanged {
+			return nil
+		}
+		if updated.Type == model.AccountTypeShared {
+			if err = accountsTx.AddMember(ctx, model.AccountMember{
+				AccountID:    updated.ID,
+				UserID:       updated.OwnerID,
+				DefaultShare: 1,
+			}); err != nil {
+				return fmt.Errorf("add owner as member: %w", err)
+			}
+			return nil
+		}
+		if err = accountsTx.RemoveMember(ctx, updated.ID, updated.OwnerID); err != nil {
+			return fmt.Errorf("remove owner membership: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return model.Account{}, err
 	}
-	if req.Name != nil {
-		a.Name = strings.TrimSpace(*req.Name)
+	return updated, nil
+}
+
+func ensureSharedAccountCanBecomePersonal(ctx context.Context, accounts accountRepo, a model.Account) error {
+	members, err := accounts.GetMembers(ctx, a.ID)
+	if err != nil {
+		return fmt.Errorf("get account members: %w", err)
 	}
-	if req.Icon != nil {
-		a.Icon = req.Icon
-	}
-	if req.IncludeInBalance != nil {
-		a.IncludeInBalance = *req.IncludeInBalance
-	}
-	if req.InitialBalance != nil {
-		a.InitialBalance = *req.InitialBalance
-	}
-	if req.InitialBalanceDate != nil {
-		a.InitialBalanceDate = *req.InitialBalanceDate
+	for _, member := range members {
+		if member.UserID != a.OwnerID {
+			return fmt.Errorf("remove other members before changing account type: %w", apperr.ErrConflict)
+		}
 	}
 
-	return s.accounts.Update(ctx, a)
+	hasTransactions, err := accounts.HasTransactions(ctx, a.ID)
+	if err != nil {
+		return fmt.Errorf("check account transactions: %w", err)
+	}
+	if hasTransactions {
+		return fmt.Errorf("a shared account with transactions cannot become personal: %w", apperr.ErrConflict)
+	}
+	return nil
 }
 
 func (s *AccountService) DeleteAccount(ctx context.Context, requesterID, accountID string) error {

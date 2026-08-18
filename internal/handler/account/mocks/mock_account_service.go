@@ -160,18 +160,18 @@ func (mr *MockaccountServiceMockRecorder) RemoveMember(ctx, requesterID, account
 }
 
 // UpdateAccount mocks base method.
-func (m *MockaccountService) UpdateAccount(ctx context.Context, accountID string, req model.UpdateAccountReq) (model.Account, error) {
+func (m *MockaccountService) UpdateAccount(ctx context.Context, requesterID, accountID string, req model.UpdateAccountReq) (model.Account, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateAccount", ctx, accountID, req)
+	ret := m.ctrl.Call(m, "UpdateAccount", ctx, requesterID, accountID, req)
 	ret0, _ := ret[0].(model.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateAccount indicates an expected call of UpdateAccount.
-func (mr *MockaccountServiceMockRecorder) UpdateAccount(ctx, accountID, req any) *gomock.Call {
+func (mr *MockaccountServiceMockRecorder) UpdateAccount(ctx, requesterID, accountID, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAccount", reflect.TypeOf((*MockaccountService)(nil).UpdateAccount), ctx, accountID, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAccount", reflect.TypeOf((*MockaccountService)(nil).UpdateAccount), ctx, requesterID, accountID, req)
 }
 
 // UpdateMember mocks base method.

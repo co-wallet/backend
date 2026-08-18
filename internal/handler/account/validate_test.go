@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 )
 
 func TestCreateAccountReq_Validate(t *testing.T) {
@@ -140,6 +143,16 @@ func TestUpdateAccountReq_Validate(t *testing.T) {
 			name:    "valid date",
 			req:     updateAccountReq{InitialBalanceDate: strPtr("2024-06-01")},
 			wantErr: "",
+		},
+		{
+			name:    "valid shared type",
+			req:     updateAccountReq{Type: ptr.To(model.AccountTypeShared)},
+			wantErr: "",
+		},
+		{
+			name:    "invalid type",
+			req:     updateAccountReq{Type: ptr.To(model.AccountType("credit"))},
+			wantErr: "type must be 'personal' or 'shared'",
 		},
 		{
 			name:    "invalid date format",

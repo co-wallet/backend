@@ -162,14 +162,30 @@ func (s *AccountHandlerSuite) TestGet_NotFound() {
 
 func (s *AccountHandlerSuite) TestUpdate_Success() {
 	s.svc.EXPECT().
-		UpdateAccount(gomock.Any(), "a1", gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, req model.UpdateAccountReq) (model.Account, error) {
+		UpdateAccount(gomock.Any(), "u1", "a1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateAccountReq) (model.Account, error) {
 			s.NotNil(req.Name)
 			s.Equal("New", *req.Name)
 			return model.Account{ID: "a1", Name: "New", Type: model.AccountTypePersonal}, nil
 		})
 
 	body := `{"name":"New"}`
+	req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
+	rec := httptest.NewRecorder()
+	s.h.Update(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+}
+
+func (s *AccountHandlerSuite) TestUpdate_PassesRequestedType() {
+	s.svc.EXPECT().
+		UpdateAccount(gomock.Any(), "u1", "a1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateAccountReq) (model.Account, error) {
+			s.Require().NotNil(req.Type)
+			s.Equal(model.AccountTypeShared, *req.Type)
+			return model.Account{ID: "a1", Type: model.AccountTypeShared}, nil
+		})
+
+	body := `{"type":"shared"}`
 	req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
 	rec := httptest.NewRecorder()
 	s.h.Update(rec, req)

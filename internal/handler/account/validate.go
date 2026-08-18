@@ -58,11 +58,12 @@ func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 }
 
 type updateAccountReq struct {
-	Name               *string  `json:"name"`
-	Icon               *string  `json:"icon"`
-	IncludeInBalance   *bool    `json:"includeInBalance"`
-	InitialBalance     *float64 `json:"initialBalance"`
-	InitialBalanceDate *string  `json:"initialBalanceDate"` // "YYYY-MM-DD", nil = don't update
+	Name               *string            `json:"name"`
+	Type               *model.AccountType `json:"type"`
+	Icon               *string            `json:"icon"`
+	IncludeInBalance   *bool              `json:"includeInBalance"`
+	InitialBalance     *float64           `json:"initialBalance"`
+	InitialBalanceDate *string            `json:"initialBalanceDate"` // "YYYY-MM-DD", nil = don't update
 }
 
 func (r *updateAccountReq) validate() error {
@@ -71,6 +72,9 @@ func (r *updateAccountReq) validate() error {
 		if *r.Name == "" {
 			return fmt.Errorf("name cannot be empty")
 		}
+	}
+	if r.Type != nil && *r.Type != model.AccountTypePersonal && *r.Type != model.AccountTypeShared {
+		return fmt.Errorf("type must be 'personal' or 'shared'")
 	}
 	if r.InitialBalanceDate != nil {
 		if _, err := time.Parse("2006-01-02", *r.InitialBalanceDate); err != nil {

@@ -100,6 +100,21 @@ func (mr *MockaccountRepoMockRecorder) GetMembers(ctx, accountID any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMembers", reflect.TypeOf((*MockaccountRepo)(nil).GetMembers), ctx, accountID)
 }
 
+// HasTransactions mocks base method.
+func (m *MockaccountRepo) HasTransactions(ctx context.Context, accountID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasTransactions", ctx, accountID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasTransactions indicates an expected call of HasTransactions.
+func (mr *MockaccountRepoMockRecorder) HasTransactions(ctx, accountID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasTransactions", reflect.TypeOf((*MockaccountRepo)(nil).HasTransactions), ctx, accountID)
+}
+
 // ListBalancesByUser mocks base method.
 func (m *MockaccountRepo) ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error) {
 	m.ctrl.T.Helper()
