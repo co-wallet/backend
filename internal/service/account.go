@@ -72,10 +72,10 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	a := model.Account{
 		OwnerID:            ownerID,
 		Name:               req.Name,
-		Type:               req.Type,
+		AccessMode:         req.AccessMode,
+		Kind:               req.Kind,
 		Currency:           req.Currency,
 		Icon:               req.Icon,
-		IncludeInBalance:   req.IncludeInBalance,
 		InitialBalance:     req.InitialBalance,
 		InitialBalanceDate: req.InitialBalanceDate,
 	}
@@ -88,7 +88,7 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 			return fmt.Errorf("create account: %w", innerErr)
 		}
 
-		if created.Type == model.AccountTypeShared {
+		if created.AccessMode == model.AccountAccessModeShared {
 			if innerErr = accountsTx.AddMember(ctx, model.AccountMember{
 				AccountID:    created.ID,
 				UserID:       ownerID,
@@ -113,17 +113,17 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			return err
 		}
 
-		typeChanged := req.Type != nil && *req.Type != a.Type
-		if typeChanged {
+		accessModeChanged := req.AccessMode != nil && *req.AccessMode != a.AccessMode
+		if accessModeChanged {
 			if requesterID != a.OwnerID {
-				return fmt.Errorf("only the owner can change account type: %w", apperr.ErrForbidden)
+				return fmt.Errorf("only the owner can change account access mode: %w", apperr.ErrForbidden)
 			}
-			if *req.Type == model.AccountTypePersonal {
+			if *req.AccessMode == model.AccountAccessModePersonal {
 				if err = ensureSharedAccountCanBecomePersonal(ctx, accountsTx, a); err != nil {
 					return err
 				}
 			}
-			a.Type = *req.Type
+			a.AccessMode = *req.AccessMode
 		}
 
 		if req.Name != nil {
@@ -131,9 +131,6 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 		}
 		if req.Icon != nil {
 			a.Icon = req.Icon
-		}
-		if req.IncludeInBalance != nil {
-			a.IncludeInBalance = *req.IncludeInBalance
 		}
 		if req.InitialBalance != nil {
 			a.InitialBalance = *req.InitialBalance
@@ -147,10 +144,10 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			return fmt.Errorf("update account: %w", err)
 		}
 
-		if !typeChanged {
+		if !accessModeChanged {
 			return nil
 		}
-		if updated.Type == model.AccountTypeShared {
+		if updated.AccessMode == model.AccountAccessModeShared {
 			if err = accountsTx.AddMember(ctx, model.AccountMember{
 				AccountID:    updated.ID,
 				UserID:       updated.OwnerID,

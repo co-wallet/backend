@@ -28,8 +28,8 @@ func (r *AccountRepository) WithTx(tx pgx.Tx) *AccountRepository {
 // ListByUser returns all non-deleted accounts where user is owner or member.
 func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]model.Account, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT DISTINCT a.id, a.owner_id, a.name, a.type, a.currency, a.icon,
-		       a.include_in_balance, a.initial_balance, a.initial_balance_date,
+		SELECT DISTINCT a.id, a.owner_id, a.name, a.access_mode, a.kind, a.currency, a.icon,
+		       a.initial_balance, a.initial_balance_date,
 		       a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN account_members am ON am.account_id = a.id
@@ -45,8 +45,8 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 	for rows.Next() {
 		var a model.Account
 		if err = rows.Scan(
-			&a.ID, &a.OwnerID, &a.Name, &a.Type, &a.Currency, &a.Icon,
-			&a.IncludeInBalance, &a.InitialBalance, &a.InitialBalanceDate,
+			&a.ID, &a.OwnerID, &a.Name, &a.AccessMode, &a.Kind, &a.Currency, &a.Icon,
+			&a.InitialBalance, &a.InitialBalanceDate,
 			&a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -60,13 +60,13 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 func (r *AccountRepository) GetByID(ctx context.Context, id string) (model.Account, error) {
 	var a model.Account
 	err := r.db.QueryRow(ctx, `
-		SELECT id, owner_id, name, type, currency, icon,
-		       include_in_balance, initial_balance, initial_balance_date,
+		SELECT id, owner_id, name, access_mode, kind, currency, icon,
+		       initial_balance, initial_balance_date,
 		       created_at, updated_at
 		FROM accounts WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(
-		&a.ID, &a.OwnerID, &a.Name, &a.Type, &a.Currency, &a.Icon,
-		&a.IncludeInBalance, &a.InitialBalance, &a.InitialBalanceDate,
+		&a.ID, &a.OwnerID, &a.Name, &a.AccessMode, &a.Kind, &a.Currency, &a.Icon,
+		&a.InitialBalance, &a.InitialBalanceDate,
 		&a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
@@ -78,11 +78,11 @@ func (r *AccountRepository) GetByID(ctx context.Context, id string) (model.Accou
 // Create inserts a new account and returns it with DB-generated fields populated.
 func (r *AccountRepository) Create(ctx context.Context, a model.Account) (model.Account, error) {
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO accounts (owner_id, name, type, currency, icon, include_in_balance, initial_balance, initial_balance_date)
+		INSERT INTO accounts (owner_id, name, access_mode, kind, currency, icon, initial_balance, initial_balance_date)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`,
-		a.OwnerID, a.Name, a.Type, a.Currency, a.Icon,
-		a.IncludeInBalance, a.InitialBalance, a.InitialBalanceDate,
+		a.OwnerID, a.Name, a.AccessMode, a.Kind, a.Currency, a.Icon,
+		a.InitialBalance, a.InitialBalanceDate,
 	).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	return a, err
 }
@@ -91,12 +91,12 @@ func (r *AccountRepository) Create(ctx context.Context, a model.Account) (model.
 func (r *AccountRepository) Update(ctx context.Context, a model.Account) (model.Account, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE accounts
-		SET name = $1, type = $2, icon = $3, include_in_balance = $4,
-		    initial_balance = $5, initial_balance_date = $6,
+		SET name = $1, access_mode = $2, icon = $3,
+		    initial_balance = $4, initial_balance_date = $5,
 		    updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
+		WHERE id = $6 AND deleted_at IS NULL
 		RETURNING updated_at`,
-		a.Name, a.Type, a.Icon, a.IncludeInBalance, a.InitialBalance, a.InitialBalanceDate, a.ID,
+		a.Name, a.AccessMode, a.Icon, a.InitialBalance, a.InitialBalanceDate, a.ID,
 	).Scan(&a.UpdatedAt)
 	return a, err
 }

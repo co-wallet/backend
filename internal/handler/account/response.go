@@ -18,12 +18,12 @@ type AccountResponse struct {
 	ID                 string           `json:"id"`
 	OwnerID            string           `json:"ownerId"`
 	Name               string           `json:"name"`
-	Type               string           `json:"type"`
+	AccessMode         string           `json:"accessMode"`
+	Kind               string           `json:"kind"`
 	Currency           string           `json:"currency"`
 	Icon               *string          `json:"icon"`
-	IncludeInBalance   bool             `json:"includeInBalance"`
-	InitialBalance     float64   `json:"initialBalance"`
-	InitialBalanceDate time.Time `json:"initialBalanceDate"`
+	InitialBalance     float64          `json:"initialBalance"`
+	InitialBalanceDate time.Time        `json:"initialBalanceDate"`
 	Members            []MemberResponse `json:"members,omitempty"`
 	Balance            *BalanceResponse `json:"balance,omitempty"`
 }
@@ -40,10 +40,10 @@ func toAccountResponse(a model.Account) AccountResponse {
 		ID:                 a.ID,
 		OwnerID:            a.OwnerID,
 		Name:               a.Name,
-		Type:               string(a.Type),
+		AccessMode:         string(a.AccessMode),
+		Kind:               string(a.Kind),
 		Currency:           a.Currency,
 		Icon:               a.Icon,
-		IncludeInBalance:   a.IncludeInBalance,
 		InitialBalance:     a.InitialBalance,
 		InitialBalanceDate: a.InitialBalanceDate,
 	}

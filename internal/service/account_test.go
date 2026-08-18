@@ -47,15 +47,17 @@ func (s *AccountServiceSuite) SetupTest() {
 
 func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 	req := model.CreateAccountReq{
-		Name:     "Wallet",
-		Type:     model.AccountTypePersonal,
-		Currency: "USD",
+		Name:       "Wallet",
+		AccessMode: model.AccountAccessModePersonal,
+		Kind:       model.AccountKindSpending,
+		Currency:   "USD",
 	}
 	s.repo.EXPECT().
 		Create(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
 			s.Equal("owner-1", a.OwnerID)
-			s.Equal(model.AccountTypePersonal, a.Type)
+			s.Equal(model.AccountAccessModePersonal, a.AccessMode)
+			s.Equal(model.AccountKindSpending, a.Kind)
 			a.ID = "acc-1"
 			return a, nil
 		})
@@ -69,16 +71,17 @@ func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 
 func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 	req := model.CreateAccountReq{
-		Name:     "Family",
-		Type:     model.AccountTypeShared,
-		Currency: "USD",
+		Name:       "Family",
+		AccessMode: model.AccountAccessModeShared,
+		Kind:       model.AccountKindSpending,
+		Currency:   "USD",
 	}
 	gomock.InOrder(
 		s.repo.EXPECT().
 			Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
 				a.ID = "acc-1"
-				s.Equal(model.AccountTypeShared, a.Type)
+				s.Equal(model.AccountAccessModeShared, a.AccessMode)
 				return a, nil
 			}),
 		s.repo.EXPECT().
@@ -97,9 +100,9 @@ func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 }
 
 func (s *AccountServiceSuite) TestCreateAccount_AddMemberFailureRollsBack() {
-	req := model.CreateAccountReq{Name: "F", Type: model.AccountTypeShared, Currency: "USD"}
+	req := model.CreateAccountReq{Name: "F", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindSpending, Currency: "USD"}
 	gomock.InOrder(
-		s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Account{ID: "a", Type: model.AccountTypeShared}, nil),
+		s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Account{ID: "a", AccessMode: model.AccountAccessModeShared}, nil),
 		s.repo.EXPECT().AddMember(gomock.Any(), gomock.Any()).Return(errors.New("dup")),
 	)
 
@@ -111,35 +114,34 @@ func (s *AccountServiceSuite) TestCreateAccount_AddMemberFailureRollsBack() {
 func (s *AccountServiceSuite) TestUpdateAccount_AppliesPartialPatch() {
 	existing := model.Account{
 		ID: "acc-1", OwnerID: "owner-1", Name: "Old",
-		IncludeInBalance: false, InitialBalance: 100,
+		Kind: model.AccountKindInvestment, InitialBalance: 100,
 	}
 	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil)
 	s.repo.EXPECT().
 		Update(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
 			s.Equal("New", a.Name)
-			s.True(a.IncludeInBalance)
+			s.Equal(model.AccountKindInvestment, a.Kind)
 			s.Equal(100.0, a.InitialBalance)
 			return a, nil
 		})
 
 	_, err := s.svc.UpdateAccount(context.Background(), "member-1", "acc-1", model.UpdateAccountReq{
-		Name:             ptr.To("  New  "),
-		IncludeInBalance: ptr.To(true),
+		Name: ptr.To("  New  "),
 	})
 	s.NoError(err)
 }
 
 func (s *AccountServiceSuite) TestUpdateAccount_PersonalToSharedAddsOwner() {
 	existing := model.Account{
-		ID: "acc-1", OwnerID: "owner-1", Name: "Wallet", Type: model.AccountTypePersonal,
+		ID: "acc-1", OwnerID: "owner-1", Name: "Wallet", AccessMode: model.AccountAccessModePersonal,
 	}
 	gomock.InOrder(
 		s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil),
 		s.repo.EXPECT().
 			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
-				s.Equal(model.AccountTypeShared, a.Type)
+				s.Equal(model.AccountAccessModeShared, a.AccessMode)
 				return a, nil
 			}),
 		s.repo.EXPECT().
@@ -153,21 +155,21 @@ func (s *AccountServiceSuite) TestUpdateAccount_PersonalToSharedAddsOwner() {
 	)
 
 	updated, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		Type: ptr.To(model.AccountTypeShared),
+		AccessMode: ptr.To(model.AccountAccessModeShared),
 	})
 
 	s.NoError(err)
-	s.Equal(model.AccountTypeShared, updated.Type)
+	s.Equal(model.AccountAccessModeShared, updated.AccessMode)
 	s.True(s.txCommitCh)
 }
 
-func (s *AccountServiceSuite) TestUpdateAccount_TypeChangeByNonOwnerForbidden() {
+func (s *AccountServiceSuite) TestUpdateAccount_AccessModeChangeByNonOwnerForbidden() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(model.Account{
-		ID: "acc-1", OwnerID: "owner-1", Type: model.AccountTypePersonal,
+		ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModePersonal,
 	}, nil)
 
 	_, err := s.svc.UpdateAccount(context.Background(), "member-1", "acc-1", model.UpdateAccountReq{
-		Type: ptr.To(model.AccountTypeShared),
+		AccessMode: ptr.To(model.AccountAccessModeShared),
 	})
 
 	s.ErrorIs(err, apperr.ErrForbidden)
@@ -175,7 +177,7 @@ func (s *AccountServiceSuite) TestUpdateAccount_TypeChangeByNonOwnerForbidden() 
 }
 
 func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithOtherMembersConflicts() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", Type: model.AccountTypeShared}
+	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
 	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil)
 	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
 		{AccountID: "acc-1", UserID: "owner-1"},
@@ -183,7 +185,7 @@ func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithOtherMembers
 	}, nil)
 
 	_, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		Type: ptr.To(model.AccountTypePersonal),
+		AccessMode: ptr.To(model.AccountAccessModePersonal),
 	})
 
 	s.ErrorIs(err, apperr.ErrConflict)
@@ -191,7 +193,7 @@ func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithOtherMembers
 }
 
 func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithTransactionsConflicts() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", Type: model.AccountTypeShared}
+	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
 	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil)
 	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
 		{AccountID: "acc-1", UserID: "owner-1"},
@@ -199,7 +201,7 @@ func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithTransactions
 	s.repo.EXPECT().HasTransactions(gomock.Any(), "acc-1").Return(true, nil)
 
 	_, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		Type: ptr.To(model.AccountTypePersonal),
+		AccessMode: ptr.To(model.AccountAccessModePersonal),
 	})
 
 	s.ErrorIs(err, apperr.ErrConflict)
@@ -207,7 +209,7 @@ func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithTransactions
 }
 
 func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalRemovesOwnerMembership() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", Type: model.AccountTypeShared}
+	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
 	gomock.InOrder(
 		s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil),
 		s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
@@ -217,18 +219,18 @@ func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalRemovesOwnerMemb
 		s.repo.EXPECT().
 			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
-				s.Equal(model.AccountTypePersonal, a.Type)
+				s.Equal(model.AccountAccessModePersonal, a.AccessMode)
 				return a, nil
 			}),
 		s.repo.EXPECT().RemoveMember(gomock.Any(), "acc-1", "owner-1").Return(nil),
 	)
 
 	updated, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		Type: ptr.To(model.AccountTypePersonal),
+		AccessMode: ptr.To(model.AccountAccessModePersonal),
 	})
 
 	s.NoError(err)
-	s.Equal(model.AccountTypePersonal, updated.Type)
+	s.Equal(model.AccountAccessModePersonal, updated.AccessMode)
 	s.True(s.txCommitCh)
 }
 

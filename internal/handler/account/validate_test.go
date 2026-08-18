@@ -13,7 +13,8 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 	validReq := func() createAccountReq {
 		return createAccountReq{
 			Name:               "My Card",
-			Type:               "personal",
+			AccessMode:         model.AccountAccessModePersonal,
+			Kind:               model.AccountKindSpending,
 			Currency:           "USD",
 			InitialBalance:     0,
 			InitialBalanceDate: "2024-01-15",
@@ -56,13 +57,26 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "invalid type",
-			modify:  func(r *createAccountReq) { r.Type = "family" },
-			wantErr: "type must be 'personal' or 'shared'",
+			name:    "invalid access mode",
+			modify:  func(r *createAccountReq) { r.AccessMode = "family" },
+			wantErr: "accessMode must be 'personal' or 'shared'",
 		},
 		{
-			name:    "type shared is valid",
-			modify:  func(r *createAccountReq) { r.Type = "shared" },
+			name:    "shared access mode is valid",
+			modify:  func(r *createAccountReq) { r.AccessMode = "shared" },
+			wantErr: "",
+		},
+		{
+			name:    "invalid kind",
+			modify:  func(r *createAccountReq) { r.Kind = "crypto" },
+			wantErr: "kind must be 'spending', 'deposit', or 'investment'",
+		},
+		{
+			name: "empty access mode and kind use defaults",
+			modify: func(r *createAccountReq) {
+				r.AccessMode = ""
+				r.Kind = ""
+			},
 			wantErr: "",
 		},
 		{
@@ -145,14 +159,19 @@ func TestUpdateAccountReq_Validate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "valid shared type",
-			req:     updateAccountReq{Type: ptr.To(model.AccountTypeShared)},
+			name:    "valid shared access mode",
+			req:     updateAccountReq{AccessMode: ptr.To(model.AccountAccessModeShared)},
 			wantErr: "",
 		},
 		{
-			name:    "invalid type",
-			req:     updateAccountReq{Type: ptr.To(model.AccountType("credit"))},
-			wantErr: "type must be 'personal' or 'shared'",
+			name:    "invalid access mode",
+			req:     updateAccountReq{AccessMode: ptr.To(model.AccountAccessMode("credit"))},
+			wantErr: "accessMode must be 'personal' or 'shared'",
+		},
+		{
+			name:    "kind change is forbidden",
+			req:     updateAccountReq{Kind: ptr.To(model.AccountKindInvestment)},
+			wantErr: "kind cannot be changed after account creation",
 		},
 		{
 			name:    "invalid date format",

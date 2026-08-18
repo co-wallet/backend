@@ -9,18 +9,24 @@ import (
 )
 
 type createAccountReq struct {
-	Name               string            `json:"name"`
-	Type               model.AccountType `json:"type"`
-	Currency           string            `json:"currency"`
-	Icon               *string           `json:"icon"`
-	IncludeInBalance   *bool             `json:"includeInBalance"`
-	InitialBalance     float64           `json:"initialBalance"`
-	InitialBalanceDate string            `json:"initialBalanceDate"` // "YYYY-MM-DD" from frontend
+	Name               string                  `json:"name"`
+	AccessMode         model.AccountAccessMode `json:"accessMode"`
+	Kind               model.AccountKind       `json:"kind"`
+	Currency           string                  `json:"currency"`
+	Icon               *string                 `json:"icon"`
+	InitialBalance     float64                 `json:"initialBalance"`
+	InitialBalanceDate string                  `json:"initialBalanceDate"` // "YYYY-MM-DD" from frontend
 }
 
 func (r *createAccountReq) validate() error {
 	r.Name = strings.TrimSpace(r.Name)
 	r.Currency = strings.ToUpper(strings.TrimSpace(r.Currency))
+	if r.AccessMode == "" {
+		r.AccessMode = model.AccountAccessModePersonal
+	}
+	if r.Kind == "" {
+		r.Kind = model.AccountKindSpending
+	}
 
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
@@ -28,8 +34,11 @@ func (r *createAccountReq) validate() error {
 	if len(r.Currency) != 3 {
 		return fmt.Errorf("currency must be a 3-letter ISO code")
 	}
-	if r.Type != model.AccountTypePersonal && r.Type != model.AccountTypeShared {
-		return fmt.Errorf("type must be 'personal' or 'shared'")
+	if !r.AccessMode.IsValid() {
+		return fmt.Errorf("accessMode must be 'personal' or 'shared'")
+	}
+	if !r.Kind.IsValid() {
+		return fmt.Errorf("kind must be 'spending', 'deposit', or 'investment'")
 	}
 	if r.InitialBalanceDate == "" {
 		return fmt.Errorf("initialBalanceDate is required")
@@ -41,29 +50,25 @@ func (r *createAccountReq) validate() error {
 }
 
 func (r *createAccountReq) toModelReq() model.CreateAccountReq {
-	includeInBalance := true
-	if r.IncludeInBalance != nil {
-		includeInBalance = *r.IncludeInBalance
-	}
 	ibd, _ := time.Parse("2006-01-02", r.InitialBalanceDate)
 	return model.CreateAccountReq{
 		Name:               r.Name,
-		Type:               r.Type,
+		AccessMode:         r.AccessMode,
+		Kind:               r.Kind,
 		Currency:           r.Currency,
 		Icon:               r.Icon,
-		IncludeInBalance:   includeInBalance,
 		InitialBalance:     r.InitialBalance,
 		InitialBalanceDate: ibd,
 	}
 }
 
 type updateAccountReq struct {
-	Name               *string            `json:"name"`
-	Type               *model.AccountType `json:"type"`
-	Icon               *string            `json:"icon"`
-	IncludeInBalance   *bool              `json:"includeInBalance"`
-	InitialBalance     *float64           `json:"initialBalance"`
-	InitialBalanceDate *string            `json:"initialBalanceDate"` // "YYYY-MM-DD", nil = don't update
+	Name               *string                  `json:"name"`
+	AccessMode         *model.AccountAccessMode `json:"accessMode"`
+	Kind               *model.AccountKind       `json:"kind"`
+	Icon               *string                  `json:"icon"`
+	InitialBalance     *float64                 `json:"initialBalance"`
+	InitialBalanceDate *string                  `json:"initialBalanceDate"` // "YYYY-MM-DD", nil = don't update
 }
 
 func (r *updateAccountReq) validate() error {
@@ -73,8 +78,11 @@ func (r *updateAccountReq) validate() error {
 			return fmt.Errorf("name cannot be empty")
 		}
 	}
-	if r.Type != nil && *r.Type != model.AccountTypePersonal && *r.Type != model.AccountTypeShared {
-		return fmt.Errorf("type must be 'personal' or 'shared'")
+	if r.AccessMode != nil && !r.AccessMode.IsValid() {
+		return fmt.Errorf("accessMode must be 'personal' or 'shared'")
+	}
+	if r.Kind != nil {
+		return fmt.Errorf("kind cannot be changed after account creation")
 	}
 	if r.InitialBalanceDate != nil {
 		if _, err := time.Parse("2006-01-02", *r.InitialBalanceDate); err != nil {
