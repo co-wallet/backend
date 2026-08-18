@@ -91,14 +91,26 @@ func (r *AccountRepository) Create(ctx context.Context, a model.Account) (model.
 func (r *AccountRepository) Update(ctx context.Context, a model.Account) (model.Account, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE accounts
-		SET name = $1, icon = $2, include_in_balance = $3,
-		    initial_balance = $4, initial_balance_date = $5,
+		SET name = $1, type = $2, icon = $3, include_in_balance = $4,
+		    initial_balance = $5, initial_balance_date = $6,
 		    updated_at = now()
-		WHERE id = $6 AND deleted_at IS NULL
+		WHERE id = $7 AND deleted_at IS NULL
 		RETURNING updated_at`,
-		a.Name, a.Icon, a.IncludeInBalance, a.InitialBalance, a.InitialBalanceDate, a.ID,
+		a.Name, a.Type, a.Icon, a.IncludeInBalance, a.InitialBalance, a.InitialBalanceDate, a.ID,
 	).Scan(&a.UpdatedAt)
 	return a, err
+}
+
+func (r *AccountRepository) HasTransactions(ctx context.Context, accountID string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM transactions
+			WHERE account_id = $1 OR to_account_id = $1
+		)`, accountID,
+	).Scan(&exists)
+	return exists, err
 }
 
 func (r *AccountRepository) SoftDelete(ctx context.Context, id string) error {

@@ -91,6 +91,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	accountID := chi.URLParam(r, "accountID")
+	requesterID := middleware.UserIDFromCtx(r.Context())
 
 	var req updateAccountReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -104,6 +105,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	updateReq := model.UpdateAccountReq{
 		Name:             req.Name,
+		Type:             req.Type,
 		Icon:             req.Icon,
 		IncludeInBalance: req.IncludeInBalance,
 		InitialBalance:   req.InitialBalance,
@@ -112,7 +114,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		t, _ := time.Parse("2006-01-02", *req.InitialBalanceDate)
 		updateReq.InitialBalanceDate = &t
 	}
-	a, err := h.service.UpdateAccount(r.Context(), accountID, updateReq)
+	a, err := h.service.UpdateAccount(r.Context(), requesterID, accountID, updateReq)
 	if err != nil {
 		handleServiceError(w, err)
 		return

@@ -14,7 +14,7 @@ type accountService interface {
 	ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error)
 	GetByID(ctx context.Context, accountID string) (model.Account, error)
 	CreateAccount(ctx context.Context, ownerID string, req model.CreateAccountReq) (model.Account, error)
-	UpdateAccount(ctx context.Context, accountID string, req model.UpdateAccountReq) (model.Account, error)
+	UpdateAccount(ctx context.Context, requesterID, accountID string, req model.UpdateAccountReq) (model.Account, error)
 	DeleteAccount(ctx context.Context, requesterID, accountID string) error
 	AddMember(ctx context.Context, accountID, username string, share float64) ([]model.AccountMember, error)
 	UpdateMember(ctx context.Context, accountID, memberUserID string, share float64) ([]model.AccountMember, error)

@@ -57,6 +57,7 @@ type CreateAccountReq struct {
 
 type UpdateAccountReq struct {
 	Name               *string
+	Type               *AccountType
 	Icon               *string
 	IncludeInBalance   *bool
 	InitialBalance     *float64
