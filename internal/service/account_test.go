@@ -49,7 +49,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 	req := model.CreateAccountReq{
 		Name:       "Wallet",
 		AccessMode: model.AccountAccessModePersonal,
-		Kind:       model.AccountKindCurrent,
+		Kind:       model.AccountKindSpending,
 		Currency:   "USD",
 	}
 	s.repo.EXPECT().
@@ -57,7 +57,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 		DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
 			s.Equal("owner-1", a.OwnerID)
 			s.Equal(model.AccountAccessModePersonal, a.AccessMode)
-			s.Equal(model.AccountKindCurrent, a.Kind)
+			s.Equal(model.AccountKindSpending, a.Kind)
 			a.ID = "acc-1"
 			return a, nil
 		})
@@ -73,7 +73,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 	req := model.CreateAccountReq{
 		Name:       "Family",
 		AccessMode: model.AccountAccessModeShared,
-		Kind:       model.AccountKindCurrent,
+		Kind:       model.AccountKindSpending,
 		Currency:   "USD",
 	}
 	gomock.InOrder(
@@ -100,7 +100,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 }
 
 func (s *AccountServiceSuite) TestCreateAccount_AddMemberFailureRollsBack() {
-	req := model.CreateAccountReq{Name: "F", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindCurrent, Currency: "USD"}
+	req := model.CreateAccountReq{Name: "F", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindSpending, Currency: "USD"}
 	gomock.InOrder(
 		s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Account{ID: "a", AccessMode: model.AccountAccessModeShared}, nil),
 		s.repo.EXPECT().AddMember(gomock.Any(), gomock.Any()).Return(errors.New("dup")),

@@ -14,7 +14,7 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 		return createAccountReq{
 			Name:               "My Card",
 			AccessMode:         model.AccountAccessModePersonal,
-			Kind:               model.AccountKindCurrent,
+			Kind:               model.AccountKindSpending,
 			Currency:           "USD",
 			InitialBalance:     0,
 			InitialBalanceDate: "2024-01-15",
@@ -69,7 +69,7 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 		{
 			name:    "invalid kind",
 			modify:  func(r *createAccountReq) { r.Kind = "crypto" },
-			wantErr: "kind must be 'current', 'deposit', or 'investment'",
+			wantErr: "kind must be 'spending', 'deposit', or 'investment'",
 		},
 		{
 			name: "empty access mode and kind use defaults",

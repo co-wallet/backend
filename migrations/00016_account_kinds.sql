@@ -6,10 +6,10 @@ ALTER TABLE accounts
     CHECK (access_mode IN ('personal', 'shared'));
 
 ALTER TABLE accounts
-    ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'current';
+    ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'spending';
 ALTER TABLE accounts
     ADD CONSTRAINT accounts_kind_check
-    CHECK (kind IN ('current', 'deposit', 'investment'));
+    CHECK (kind IN ('spending', 'deposit', 'investment'));
 
 ALTER TABLE accounts DROP COLUMN include_in_balance;
 

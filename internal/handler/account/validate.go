@@ -25,7 +25,7 @@ func (r *createAccountReq) validate() error {
 		r.AccessMode = model.AccountAccessModePersonal
 	}
 	if r.Kind == "" {
-		r.Kind = model.AccountKindCurrent
+		r.Kind = model.AccountKindSpending
 	}
 
 	if r.Name == "" {
@@ -38,7 +38,7 @@ func (r *createAccountReq) validate() error {
 		return fmt.Errorf("accessMode must be 'personal' or 'shared'")
 	}
 	if !r.Kind.IsValid() {
-		return fmt.Errorf("kind must be 'current', 'deposit', or 'investment'")
+		return fmt.Errorf("kind must be 'spending', 'deposit', or 'investment'")
 	}
 	if r.InitialBalanceDate == "" {
 		return fmt.Errorf("initialBalanceDate is required")

@@ -27,7 +27,7 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, now.Format("2006-01")+"-01", p.DateFrom.Format(dateLayout))
 				assert.Equal(t, now.Format(dateLayout), p.DateTo.Format(dateLayout))
 				assert.Nil(t, p.AccountIDs)
-				assert.Equal(t, []model.AccountKind{model.AccountKindCurrent}, p.AccountKinds)
+				assert.Equal(t, []model.AccountKind{model.AccountKindSpending}, p.AccountKinds)
 				assert.Empty(t, p.Currency)
 				assert.Empty(t, string(p.TxType))
 			},
@@ -38,7 +38,7 @@ func TestParseFilterParams(t *testing.T) {
 				"date_from":     {"2026-01-01"},
 				"date_to":       {"2026-01-31"},
 				"account_ids":   {validUUID + "," + validUUID},
-				"account_kinds": {"current,investment,current"},
+				"account_kinds": {"spending,investment,spending"},
 				"currency":      {"eur"},
 				"type":          {"income"},
 			},
@@ -46,7 +46,7 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, "2026-01-01", p.DateFrom.Format(dateLayout))
 				assert.Equal(t, "2026-01-31", p.DateTo.Format(dateLayout))
 				assert.Equal(t, []string{validUUID, validUUID}, p.AccountIDs)
-				assert.Equal(t, []model.AccountKind{model.AccountKindCurrent, model.AccountKindInvestment}, p.AccountKinds)
+				assert.Equal(t, []model.AccountKind{model.AccountKindSpending, model.AccountKindInvestment}, p.AccountKinds)
 				assert.Equal(t, "EUR", p.Currency)
 				assert.Equal(t, model.TransactionTypeIncome, p.TxType)
 			},
@@ -60,8 +60,8 @@ func TestParseFilterParams(t *testing.T) {
 		},
 		{
 			name:    "invalid account kind",
-			query:   url.Values{"account_kinds": {"current,crypto"}},
-			wantErr: "account_kinds must contain 'current', 'deposit', or 'investment'",
+			query:   url.Values{"account_kinds": {"spending,crypto"}},
+			wantErr: "account_kinds must contain 'spending', 'deposit', or 'investment'",
 		},
 		{
 			name:    "invalid date_from",

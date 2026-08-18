@@ -10,7 +10,7 @@ import (
 
 func TestAccountKindFilter(t *testing.T) {
 	condition, args, next := accountKindFilter(
-		[]model.AccountKind{model.AccountKindCurrent, model.AccountKindInvestment},
+		[]model.AccountKind{model.AccountKindSpending, model.AccountKindInvestment},
 		[]any{"user-id"},
 		2,
 	)
@@ -18,7 +18,7 @@ func TestAccountKindFilter(t *testing.T) {
 	if condition != " AND a.kind IN ($2,$3)" {
 		t.Fatalf("unexpected condition: %q", condition)
 	}
-	wantArgs := []any{"user-id", model.AccountKindCurrent, model.AccountKindInvestment}
+	wantArgs := []any{"user-id", model.AccountKindSpending, model.AccountKindInvestment}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("unexpected args: %#v", args)
 	}

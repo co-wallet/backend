@@ -27,7 +27,7 @@ type filterParams struct {
 // structured параметры. Пустые параметры — допустимы и заполняются
 // дефолтами вызывающей стороной (currency из профиля пользователя).
 func parseFilterParams(q url.Values) (filterParams, error) {
-	p := filterParams{AccountKinds: []model.AccountKind{model.AccountKindCurrent}}
+	p := filterParams{AccountKinds: []model.AccountKind{model.AccountKindSpending}}
 
 	now := time.Now()
 
@@ -75,7 +75,7 @@ func parseFilterParams(q url.Values) (filterParams, error) {
 			for _, value := range strings.Split(raw, ",") {
 				kind := model.AccountKind(strings.TrimSpace(value))
 				if !kind.IsValid() {
-					return filterParams{}, fmt.Errorf("account_kinds must contain 'current', 'deposit', or 'investment'")
+					return filterParams{}, fmt.Errorf("account_kinds must contain 'spending', 'deposit', or 'investment'")
 				}
 				if _, exists := seen[kind]; exists {
 					continue

@@ -60,7 +60,7 @@ func (s *AccountHandlerSuite) TestList_WithDefaultCurrency() {
 		Return(model.User{ID: "u1", DefaultCurrency: "USD"}, nil)
 	s.svc.EXPECT().
 		ListByUser(gomock.Any(), "u1").
-		Return([]model.Account{{ID: "a1", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindCurrent}}, nil)
+		Return([]model.Account{{ID: "a1", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindSpending}}, nil)
 	s.svc.EXPECT().
 		ListBalancesByUser(gomock.Any(), "u1", "USD").
 		Return(map[string]model.AccountBalance{
@@ -96,8 +96,8 @@ func (s *AccountHandlerSuite) TestCreate_Success() {
 			s.Equal("Wallet", req.Name)
 			s.Equal("USD", req.Currency)
 			s.Equal(model.AccountAccessModePersonal, req.AccessMode)
-			s.Equal(model.AccountKindCurrent, req.Kind)
-			return model.Account{ID: "a1", Name: "Wallet", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindCurrent, Currency: "USD"}, nil
+			s.Equal(model.AccountKindSpending, req.Kind)
+			return model.Account{ID: "a1", Name: "Wallet", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindSpending, Currency: "USD"}, nil
 		})
 
 	body := `{"name":"Wallet","accessMode":"personal","currency":"usd","initialBalanceDate":"2025-01-01"}`
@@ -107,7 +107,7 @@ func (s *AccountHandlerSuite) TestCreate_Success() {
 	s.Equal(http.StatusCreated, rec.Code)
 	s.Contains(rec.Body.String(), `"a1"`)
 	s.Contains(rec.Body.String(), `"accessMode":"personal"`)
-	s.Contains(rec.Body.String(), `"kind":"current"`)
+	s.Contains(rec.Body.String(), `"kind":"spending"`)
 }
 
 func (s *AccountHandlerSuite) TestCreate_ValidationError() {
