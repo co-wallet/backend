@@ -74,3 +74,18 @@ func TestConvertExprWrapsAmountInParens(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildByCategoryQueryIncludesUncategorizedTransactions(t *testing.T) {
+	query, _ := buildByCategoryQuery(model.AnalyticsFilter{})
+
+	wantContains := []string{
+		"COALESCE(c.id::text, 'uncategorized')",
+		"COALESCE(c.name, 'Без категории')",
+		"LEFT JOIN categories c ON c.id = t.category_id",
+	}
+	for _, substr := range wantContains {
+		if !strings.Contains(query, substr) {
+			t.Errorf("by-category query missing %q\n--- got ---\n%s", substr, query)
+		}
+	}
+}

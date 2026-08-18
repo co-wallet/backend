@@ -14,6 +14,11 @@ type AnalyticsRepository struct {
 	db *pgxpool.Pool
 }
 
+const (
+	uncategorizedCategoryID   = "uncategorized"
+	uncategorizedCategoryName = "Без категории"
+)
+
 func NewAnalyticsRepository(db *pgxpool.Pool) *AnalyticsRepository {
 	return &AnalyticsRepository{db: db}
 }
@@ -170,7 +175,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	return model.AnalyticsSummary{Balance: balance, Expenses: expenses, Income: income}, nil
 }
 
-func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsFilter) ([]model.CategoryStat, error) {
+func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 	displayCurrency := f.DisplayCurrency
 
 	txType := f.TxType
@@ -190,11 +195,15 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 	args = append(args, displayCurrency, f.DateFrom, f.DateTo, txType)
 
 	q := fmt.Sprintf(`
-		SELECT c.id, c.name, c.icon, COALESCE(SUM(%s), 0) AS amount
+		SELECT
+		    COALESCE(c.id::text, '%s') AS category_id,
+		    COALESCE(c.name, '%s') AS category_name,
+		    c.icon,
+		    COALESCE(SUM(%s), 0) AS amount
 		FROM transactions t
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
-		JOIN categories c ON c.id = t.category_id
+		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
@@ -205,6 +214,8 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		  AND t.date <= $%d::date
 		GROUP BY c.id, c.name, c.icon
 		ORDER BY amount DESC`,
+		uncategorizedCategoryID,
+		uncategorizedCategoryName,
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
 		kindCond,
@@ -212,6 +223,12 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		dateFromIdx,
 		dateToIdx,
 	)
+
+	return q, args
+}
+
+func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsFilter) ([]model.CategoryStat, error) {
+	q, args := buildByCategoryQuery(f)
 
 	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
