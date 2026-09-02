@@ -12,6 +12,7 @@ import (
 
 func TestParseFilterParams(t *testing.T) {
 	validUUID := "550e8400-e29b-41d4-a716-446655440000"
+	secondUUID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
 	tests := []struct {
 		name    string
@@ -39,6 +40,9 @@ func TestParseFilterParams(t *testing.T) {
 				"date_to":       {"2026-01-31"},
 				"account_ids":   {validUUID + "," + validUUID},
 				"account_kinds": {"spending,investment,spending"},
+				"category_ids":  {validUUID},
+				"tag_ids":       {validUUID + "," + secondUUID},
+				"tag_mode":      {"and"},
 				"currency":      {"eur"},
 				"type":          {"income"},
 			},
@@ -47,6 +51,9 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, "2026-01-31", p.DateTo.Format(dateLayout))
 				assert.Equal(t, []string{validUUID, validUUID}, p.AccountIDs)
 				assert.Equal(t, []model.AccountKind{model.AccountKindSpending, model.AccountKindInvestment}, p.AccountKinds)
+				assert.Equal(t, []string{validUUID}, p.CategoryIDs)
+				assert.Equal(t, []string{validUUID, secondUUID}, p.TagIDs)
+				assert.Equal(t, "and", p.TagMode)
 				assert.Equal(t, "EUR", p.Currency)
 				assert.Equal(t, model.TransactionTypeIncome, p.TxType)
 			},
@@ -92,6 +99,21 @@ func TestParseFilterParams(t *testing.T) {
 			wantErr: "account_ids must contain valid UUIDs",
 		},
 		{
+			name:    "invalid category_id",
+			query:   url.Values{"category_ids": {"not-a-uuid"}},
+			wantErr: "category_ids must contain valid UUIDs",
+		},
+		{
+			name:    "invalid tag_id",
+			query:   url.Values{"tag_ids": {validUUID + ",bad"}},
+			wantErr: "tag_ids must contain valid UUIDs",
+		},
+		{
+			name:    "invalid tag mode",
+			query:   url.Values{"tag_mode": {"xor"}},
+			wantErr: "tag_mode must be 'or' or 'and'",
+		},
+		{
 			name:    "currency wrong length",
 			query:   url.Values{"currency": {"EURO"}},
 			wantErr: "currency must be a 3-letter ISO code",
@@ -111,6 +133,13 @@ func TestParseFilterParams(t *testing.T) {
 			query: url.Values{"account_ids": {" , , "}},
 			check: func(t *testing.T, p filterParams) {
 				assert.Empty(t, p.AccountIDs)
+			},
+		},
+		{
+			name:  "tag mode defaults to or",
+			query: url.Values{},
+			check: func(t *testing.T, p filterParams) {
+				assert.Equal(t, "or", p.TagMode)
 			},
 		},
 	}
@@ -135,7 +164,15 @@ func TestFilterParams_ToFilter(t *testing.T) {
 	dt, _ := time.Parse(dateLayout, "2026-03-31")
 
 	t.Run("uses explicit currency when provided", func(t *testing.T) {
-		p := filterParams{DateFrom: df, DateTo: dt, Currency: "EUR", TxType: model.TransactionTypeExpense}
+		p := filterParams{
+			DateFrom:    df,
+			DateTo:      dt,
+			CategoryIDs: []string{"category-1"},
+			TagIDs:      []string{"tag-1"},
+			TagMode:     "and",
+			Currency:    "EUR",
+			TxType:      model.TransactionTypeExpense,
+		}
 		f := p.toFilter("user-1", "USD")
 		assert.Equal(t, "EUR", f.DisplayCurrency)
 		assert.Equal(t, "user-1", f.UserID)
@@ -143,6 +180,9 @@ func TestFilterParams_ToFilter(t *testing.T) {
 		assert.Equal(t, dt, f.DateTo)
 		assert.Equal(t, model.TransactionTypeExpense, f.TxType)
 		assert.Equal(t, p.AccountKinds, f.AccountKinds)
+		assert.Equal(t, p.CategoryIDs, f.CategoryIDs)
+		assert.Equal(t, p.TagIDs, f.TagIDs)
+		assert.Equal(t, "and", f.TagMode)
 	})
 
 	t.Run("falls back to default currency", func(t *testing.T) {

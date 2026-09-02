@@ -51,6 +51,41 @@ func accountKindFilter(kinds []model.AccountKind, args []any, idx int) (string, 
 	return fmt.Sprintf(" AND a.kind IN (%s)", strings.Join(ph, ",")), args, idx
 }
 
+// transactionFilter ограничивает аналитику тем же набором категорий и тегов,
+// который используется в списке транзакций.
+func transactionFilter(f model.AnalyticsFilter, args []any, idx int) (string, []any, int) {
+	var condition strings.Builder
+	if len(f.CategoryIDs) > 0 {
+		fmt.Fprintf(&condition, " AND t.category_id = ANY($%d)", idx)
+		args = append(args, f.CategoryIDs)
+		idx++
+	}
+	if len(f.TagIDs) == 0 {
+		return condition.String(), args, idx
+	}
+
+	if f.TagMode == "and" {
+		for _, tagID := range f.TagIDs {
+			fmt.Fprintf(
+				&condition,
+				" AND EXISTS (SELECT 1 FROM transaction_tags tt_filter WHERE tt_filter.transaction_id = t.id AND tt_filter.tag_id = $%d)",
+				idx,
+			)
+			args = append(args, tagID)
+			idx++
+		}
+		return condition.String(), args, idx
+	}
+
+	fmt.Fprintf(
+		&condition,
+		" AND EXISTS (SELECT 1 FROM transaction_tags tt_filter WHERE tt_filter.transaction_id = t.id AND tt_filter.tag_id = ANY($%d))",
+		idx,
+	)
+	args = append(args, f.TagIDs)
+	return condition.String(), args, idx + 1
+}
+
 // convertExpr returns a SQL expression that converts `amount_expr` from `from_currency_col`
 // to the display currency at position `displayCurrencyIdx`.
 // Formula: amount * rate(USD→display) / rate(USD→from_currency)
@@ -138,6 +173,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	pIdx := 2
 	pAcctCond, pArgs, pIdx := accountFilter(f.AccountIDs, pArgs, pIdx)
 	pKindCond, pArgs, pIdx := accountKindFilter(f.AccountKinds, pArgs, pIdx)
+	pTxCond, pArgs, pIdx := transactionFilter(f, pArgs, pIdx)
 
 	pDispIdx := pIdx
 	dateFromIdx := pIdx + 1
@@ -153,7 +189,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		JOIN accounts a ON a.id = t.account_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.date >= $%d::date
@@ -163,6 +199,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		convertExpr("ts.amount", "t.currency", pDispIdx),
 		pAcctCond,
 		pKindCond,
+		pTxCond,
 		dateFromIdx,
 		dateToIdx,
 	)
@@ -187,6 +224,7 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 	idx := 2
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
 	kindCond, args, idx := accountKindFilter(f.AccountKinds, args, idx)
+	txCond, args, idx := transactionFilter(f, args, idx)
 
 	dispIdx := idx
 	dateFromIdx := idx + 1
@@ -206,7 +244,7 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.type = $%d
@@ -219,6 +257,7 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
 		kindCond,
+		txCond,
 		txTypeIdx,
 		dateFromIdx,
 		dateToIdx,
@@ -254,6 +293,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	idx := 2
 	acctCond, args, idx := accountFilter(f.AccountIDs, args, idx)
 	kindCond, args, idx := accountKindFilter(f.AccountKinds, args, idx)
+	txCond, args, idx := transactionFilter(f, args, idx)
 
 	dispIdx := idx
 	dateFrom := idx + 1
@@ -269,7 +309,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		JOIN tags tg ON tg.id = tt.tag_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
-		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s
+		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
 		  AND t.include_in_balance = true
 		  AND t.type = 'expense'
@@ -280,6 +320,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		convertExpr("ts.amount", "t.currency", dispIdx),
 		acctCond,
 		kindCond,
+		txCond,
 		dateFrom,
 		dateTo,
 	)
