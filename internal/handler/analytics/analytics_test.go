@@ -71,6 +71,28 @@ func (s *AnalyticsHandlerSuite) TestSummary_ExplicitCurrency() {
 	s.Equal(http.StatusOK, rec.Code)
 }
 
+func (s *AnalyticsHandlerSuite) TestSummary_ForwardsTransactionFilters() {
+	categoryID := "550e8400-e29b-41d4-a716-446655440000"
+	tagID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	s.svc.EXPECT().
+		Summary(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
+			s.Equal([]string{categoryID}, f.CategoryIDs)
+			s.Equal([]string{tagID}, f.TagIDs)
+			s.Equal("and", f.TagMode)
+			return model.AnalyticsSummary{}, nil
+		})
+
+	req := withUser(httptest.NewRequest(
+		http.MethodGet,
+		"/analytics/summary?category_ids="+categoryID+"&tag_ids="+tagID+"&tag_mode=and&currency=RUB",
+		nil,
+	), "u1")
+	rec := httptest.NewRecorder()
+	s.h.Summary(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+}
+
 func (s *AnalyticsHandlerSuite) TestSummary_InvalidDate() {
 	req := withUser(httptest.NewRequest(http.MethodGet, "/analytics/summary?date_from=not-a-date", nil), "u1")
 	rec := httptest.NewRecorder()
