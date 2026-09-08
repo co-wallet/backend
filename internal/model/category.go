@@ -16,7 +16,6 @@ func (t CategoryType) IsValid() bool {
 type Category struct {
 	ID        string
 	UserID    string
-	ParentID  *string
 	Name      string
 	Type      CategoryType
 	Icon      *string
@@ -24,10 +23,9 @@ type Category struct {
 }
 
 type CreateCategoryReq struct {
-	ParentID *string
-	Name     string
-	Type     CategoryType
-	Icon     *string
+	Name string
+	Type CategoryType
+	Icon *string
 }
 
 type UpdateCategoryReq struct {
