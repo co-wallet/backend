@@ -19,6 +19,7 @@ type Category struct {
 	Name      string
 	Type      CategoryType
 	Icon      *string
+	Hidden    bool
 	CreatedAt time.Time
 }
 

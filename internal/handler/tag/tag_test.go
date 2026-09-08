@@ -111,3 +111,38 @@ func (s *TagHandlerSuite) TestDelete_NotFound() {
 	s.h.Delete(rec, req)
 	s.Equal(http.StatusNotFound, rec.Code)
 }
+
+func (s *TagHandlerSuite) TestVisibility() {
+	for _, tc := range []struct {
+		name, body string
+		hidden     bool
+		status     int
+		err        error
+	}{
+		{name: "hide", body: `{"hidden":true}`, hidden: true, status: http.StatusNoContent},
+		{name: "show", body: `{"hidden":false}`, status: http.StatusNoContent},
+		{name: "missing value", body: `{}`, status: http.StatusBadRequest},
+		{name: "null", body: `{"hidden":null}`, status: http.StatusBadRequest},
+		{name: "invalid value", body: `{"hidden":"yes"}`, status: http.StatusBadRequest},
+		{name: "not found", body: `{"hidden":true}`, hidden: true, status: http.StatusNotFound, err: apperr.ErrNotFound},
+	} {
+		s.Run(tc.name, func() {
+			if tc.status != http.StatusBadRequest {
+				s.svc.EXPECT().SetHidden(gomock.Any(), "u2", "entry", tc.hidden).Return(tc.err)
+			}
+			req := withTagParam(withUser(httptest.NewRequest(http.MethodPut, "/visibility", strings.NewReader(tc.body)), "u2"), "entry")
+			rec := httptest.NewRecorder()
+			s.h.SetHidden(rec, req)
+			s.Equal(tc.status, rec.Code)
+		})
+	}
+}
+
+func (s *TagHandlerSuite) TestCreate() {
+	s.svc.EXPECT().Create(gomock.Any(), "u2", "new").Return(model.Tag{ID: "t1", Name: "new"}, nil)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/tags", strings.NewReader(`{"name":"new"}`)), "u2")
+	rec := httptest.NewRecorder()
+	s.h.Create(rec, req)
+	s.Equal(http.StatusCreated, rec.Code)
+	s.JSONEq(`{"id":"t1","name":"new","hidden":false}`, rec.Body.String())
+}

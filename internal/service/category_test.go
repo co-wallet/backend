@@ -116,12 +116,10 @@ func (s *CategoryServiceSuite) TestDelete_HardDeleteWithoutTransactions() {
 	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
 }
 
-func (s *CategoryServiceSuite) TestDelete_SoftDeleteWhenHasTransactions() {
+func (s *CategoryServiceSuite) TestDelete_ConflictWhenHasTransactions() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
 	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(true, nil)
-	s.repo.EXPECT().SoftDelete(gomock.Any(), "id1", "user1").Return(nil)
-
-	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
+	s.ErrorIs(s.svc.Delete(context.Background(), "user1", "id1"), apperr.ErrConflict)
 }
 
 func (s *CategoryServiceSuite) TestDelete_NotFound() {
@@ -172,4 +170,24 @@ func (s *CategoryServiceSuite) TestDelete_TransactionCheckError() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
 	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, repoErr)
 	s.ErrorIs(s.svc.Delete(context.Background(), "user1", "id1"), repoErr)
+}
+
+func (s *CategoryServiceSuite) TestSetHidden_PersonalPreference() {
+	for _, hidden := range []bool{true, false} {
+		s.repo.EXPECT().GetByID(gomock.Any(), "entry", "viewer").Return(model.Category{ID: "entry", UserID: "creator"}, nil)
+		s.repo.EXPECT().SetHidden(gomock.Any(), "entry", "viewer", hidden).Return(nil)
+		s.NoError(s.svc.SetHidden(context.Background(), "viewer", "entry", hidden))
+	}
+}
+
+func (s *CategoryServiceSuite) TestSetHidden_NotFound() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "missing", "viewer").Return(model.Category{}, apperr.ErrNotFound)
+	s.ErrorIs(s.svc.SetHidden(context.Background(), "viewer", "missing", true), apperr.ErrNotFound)
+}
+
+func (s *CategoryServiceSuite) TestSetHidden_RepositoryError() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "entry", "viewer").Return(model.Category{ID: "entry"}, nil)
+	repoErr := errors.New("database unavailable")
+	s.repo.EXPECT().SetHidden(gomock.Any(), "entry", "viewer", true).Return(repoErr)
+	s.ErrorIs(s.svc.SetHidden(context.Background(), "viewer", "entry", true), repoErr)
 }

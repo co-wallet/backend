@@ -29,10 +29,16 @@ func (r *TagRepository) WithTx(tx pgx.Tx) *TagRepository {
 func (r *TagRepository) ListByUser(ctx context.Context, userID string, q string) ([]model.TagWithCount, error) {
 	query := `
 		SELECT t.id, t.user_id, t.name, t.created_at,
-		       COUNT(tt.transaction_id) AS tx_count
+		       COUNT(tt.transaction_id) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM transactions tx JOIN accounts a ON a.id = tx.account_id
+                   WHERE tx.id = tt.transaction_id AND (a.owner_id = $1 OR EXISTS (
+                       SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1
+                   ))
+               )) AS tx_count,
+               EXISTS (SELECT 1 FROM hidden_tags h WHERE h.tag_id = t.id AND h.user_id = $1)
 		FROM tags t
 		LEFT JOIN transaction_tags tt ON tt.tag_id = t.id
-		WHERE t.user_id = $1`
+		WHERE true`
 	args := []any{userID}
 	if q != "" {
 		query += ` AND t.name ILIKE $2`
@@ -49,7 +55,7 @@ func (r *TagRepository) ListByUser(ctx context.Context, userID string, q string)
 	var tags []model.TagWithCount
 	for rows.Next() {
 		var tw model.TagWithCount
-		if err := rows.Scan(&tw.ID, &tw.UserID, &tw.Name, &tw.CreatedAt, &tw.TxCount); err != nil {
+		if err := rows.Scan(&tw.ID, &tw.UserID, &tw.Name, &tw.CreatedAt, &tw.TxCount, &tw.Hidden); err != nil {
 			return nil, err
 		}
 		tags = append(tags, tw)
@@ -60,9 +66,10 @@ func (r *TagRepository) ListByUser(ctx context.Context, userID string, q string)
 func (r *TagRepository) GetByID(ctx context.Context, id, userID string) (model.Tag, error) {
 	var t model.Tag
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, name, created_at FROM tags
-		WHERE id = $1 AND user_id = $2`, id, userID,
-	).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
+		SELECT id, user_id, name, created_at,
+        EXISTS (SELECT 1 FROM hidden_tags h WHERE h.tag_id = tags.id AND h.user_id = $2) FROM tags
+		WHERE id = $1`, id, userID,
+	).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt, &t.Hidden)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Tag{}, fmt.Errorf("tag %s: %w", id, apperr.ErrNotFound)
 	}
@@ -71,9 +78,9 @@ func (r *TagRepository) GetByID(ctx context.Context, id, userID string) (model.T
 
 func (r *TagRepository) Update(ctx context.Context, t model.Tag) (model.Tag, error) {
 	err := r.db.QueryRow(ctx, `
-		UPDATE tags SET name = $3
-		WHERE id = $1 AND user_id = $2
-		RETURNING id, user_id, name, created_at`, t.ID, t.UserID, t.Name,
+		UPDATE tags SET name = $2
+		WHERE id = $1
+		RETURNING id, user_id, name, created_at`, t.ID, t.Name,
 	).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Tag{}, fmt.Errorf("tag %s: %w", t.ID, apperr.ErrNotFound)
@@ -86,8 +93,11 @@ func (r *TagRepository) Update(ctx context.Context, t model.Tag) (model.Tag, err
 
 func (r *TagRepository) Delete(ctx context.Context, id, userID string) error {
 	tag, err := r.db.Exec(ctx, `
-		DELETE FROM tags WHERE id = $1 AND user_id = $2`, id, userID,
+		DELETE FROM tags WHERE id = $1`, id,
 	)
+	if isForeignKeyViolation(err) {
+		return fmt.Errorf("tag has linked transactions: %w", apperr.ErrConflict)
+	}
 	if err != nil {
 		return err
 	}
@@ -97,7 +107,7 @@ func (r *TagRepository) Delete(ctx context.Context, id, userID string) error {
 	return nil
 }
 
-// UpsertForTransaction upserts tags by name for a user and links them to the transaction.
+// UpsertForTransaction upserts shared tags by name and links them to the transaction.
 // Any tags previously linked to the transaction are replaced. Runs inside a single
 // DB transaction so partial failures don't leave orphaned links.
 func (r *TagRepository) UpsertForTransaction(ctx context.Context, txID, userID string, names []string) ([]model.Tag, error) {
@@ -126,8 +136,8 @@ func (r *TagRepository) upsertForTransactionLocked(ctx context.Context, txID, us
 		var t model.Tag
 		err := r.db.QueryRow(ctx, `
 			INSERT INTO tags (user_id, name)
-			VALUES ($1, $2)
-			ON CONFLICT (user_id, name) DO UPDATE SET name = EXCLUDED.name
+			VALUES ($1, lower($2))
+			ON CONFLICT (lower(name)) DO UPDATE SET name = tags.name
 			RETURNING id, user_id, name, created_at`, userID, name,
 		).Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt)
 		if err != nil {
@@ -193,4 +203,24 @@ func (r *TagRepository) ListForTransactions(ctx context.Context, txIDs []string)
 		result[txID] = append(result[txID], t)
 	}
 	return result, rows.Err()
+}
+
+func (r *TagRepository) Create(ctx context.Context, t model.Tag) (model.Tag, error) {
+	err := r.db.QueryRow(ctx, `INSERT INTO tags (user_id, name) VALUES ($1, $2) RETURNING id, created_at`, t.UserID, t.Name).Scan(&t.ID, &t.CreatedAt)
+	if isUniqueViolation(err) {
+		return model.Tag{}, fmt.Errorf("tag with this name already exists: %w", apperr.ErrConflict)
+	}
+	return t, err
+}
+
+func (r *TagRepository) SetHidden(ctx context.Context, id, userID string, hidden bool) error {
+	if hidden {
+		_, err := r.db.Exec(ctx, `INSERT INTO hidden_tags (tag_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, userID)
+		if isForeignKeyViolation(err) {
+			return apperr.ErrNotFound
+		}
+		return err
+	}
+	_, err := r.db.Exec(ctx, `DELETE FROM hidden_tags WHERE tag_id = $1 AND user_id = $2`, id, userID)
+	return err
 }

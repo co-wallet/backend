@@ -7,6 +7,7 @@ import (
 )
 
 type CategoryResponse struct {
+	Hidden    bool               `json:"hidden"`
 	ID        string             `json:"id"`
 	UserID    string             `json:"userId"`
 	Name      string             `json:"name"`
@@ -17,6 +18,7 @@ type CategoryResponse struct {
 
 func toCategoryResponse(c model.Category) CategoryResponse {
 	return CategoryResponse{
+		Hidden:    c.Hidden,
 		ID:        c.ID,
 		UserID:    c.UserID,
 		Name:      c.Name,

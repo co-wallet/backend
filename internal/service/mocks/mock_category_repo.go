@@ -115,18 +115,18 @@ func (mr *MockCategoryRepoMockRecorder) ListByUser(ctx, userID, catType any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUser", reflect.TypeOf((*MockCategoryRepo)(nil).ListByUser), ctx, userID, catType)
 }
 
-// SoftDelete mocks base method.
-func (m *MockCategoryRepo) SoftDelete(ctx context.Context, id, userID string) error {
+// SetHidden mocks base method.
+func (m *MockCategoryRepo) SetHidden(ctx context.Context, id, userID string, hidden bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SoftDelete", ctx, id, userID)
+	ret := m.ctrl.Call(m, "SetHidden", ctx, id, userID, hidden)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SoftDelete indicates an expected call of SoftDelete.
-func (mr *MockCategoryRepoMockRecorder) SoftDelete(ctx, id, userID any) *gomock.Call {
+// SetHidden indicates an expected call of SetHidden.
+func (mr *MockCategoryRepoMockRecorder) SetHidden(ctx, id, userID, hidden any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SoftDelete", reflect.TypeOf((*MockCategoryRepo)(nil).SoftDelete), ctx, id, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetHidden", reflect.TypeOf((*MockCategoryRepo)(nil).SetHidden), ctx, id, userID, hidden)
 }
 
 // Update mocks base method.

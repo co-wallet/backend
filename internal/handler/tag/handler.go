@@ -10,6 +10,8 @@ import (
 //go:generate mockgen -source=handler.go -destination=mocks/mock_tag_service.go -package=mocks
 
 type tagService interface {
+	Create(ctx context.Context, userID, name string) (model.Tag, error)
+	SetHidden(ctx context.Context, userID, id string, hidden bool) error
 	List(ctx context.Context, userID, q string) ([]model.TagWithCount, error)
 	Rename(ctx context.Context, userID, id, name string) (model.Tag, error)
 	Delete(ctx context.Context, userID, id string) error

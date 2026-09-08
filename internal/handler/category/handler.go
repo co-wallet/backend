@@ -10,6 +10,7 @@ import (
 //go:generate mockgen -source=handler.go -destination=mocks/mock_category_service.go -package=mocks
 
 type categoryService interface {
+	SetHidden(ctx context.Context, userID, id string, hidden bool) error
 	Create(ctx context.Context, userID string, req model.CreateCategoryReq) (model.Category, error)
 	List(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error)
 	Update(ctx context.Context, userID, id string, req model.UpdateCategoryReq) (model.Category, error)

@@ -54,7 +54,7 @@ func (s *CategoryHandlerSuite) TestList_Success() {
 	rec := httptest.NewRecorder()
 	s.h.List(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
-	s.JSONEq(`[{"id":"c1","userId":"","name":"Food","type":"","icon":null,"createdAt":"0001-01-01T00:00:00Z"},{"id":"c2","userId":"","name":"Restaurants","type":"","icon":null,"createdAt":"0001-01-01T00:00:00Z"}]`, rec.Body.String())
+	s.JSONEq(`[{"id":"c1","userId":"","name":"Food","type":"","icon":null,"hidden":false,"createdAt":"0001-01-01T00:00:00Z"},{"id":"c2","userId":"","name":"Restaurants","type":"","icon":null,"hidden":false,"createdAt":"0001-01-01T00:00:00Z"}]`, rec.Body.String())
 }
 
 func (s *CategoryHandlerSuite) TestList_InvalidType() {
@@ -141,4 +141,30 @@ func (s *CategoryHandlerSuite) TestList_Empty() {
 	s.h.List(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
 	s.JSONEq("[]", rec.Body.String())
+}
+
+func (s *CategoryHandlerSuite) TestVisibility() {
+	for _, tc := range []struct {
+		name, body string
+		hidden     bool
+		status     int
+		err        error
+	}{
+		{name: "hide", body: `{"hidden":true}`, hidden: true, status: http.StatusNoContent},
+		{name: "show", body: `{"hidden":false}`, status: http.StatusNoContent},
+		{name: "missing value", body: `{}`, status: http.StatusBadRequest},
+		{name: "null", body: `{"hidden":null}`, status: http.StatusBadRequest},
+		{name: "invalid value", body: `{"hidden":"yes"}`, status: http.StatusBadRequest},
+		{name: "not found", body: `{"hidden":true}`, hidden: true, status: http.StatusNotFound, err: apperr.ErrNotFound},
+	} {
+		s.Run(tc.name, func() {
+			if tc.status != http.StatusBadRequest {
+				s.svc.EXPECT().SetHidden(gomock.Any(), "u2", "entry", tc.hidden).Return(tc.err)
+			}
+			req := withCategoryParam(withUser(httptest.NewRequest(http.MethodPut, "/visibility", strings.NewReader(tc.body)), "u2"), "entry")
+			rec := httptest.NewRecorder()
+			s.h.SetHidden(rec, req)
+			s.Equal(tc.status, rec.Code)
+		})
+	}
 }

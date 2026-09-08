@@ -14,11 +14,12 @@ func TestRenameTagReq_Validate(t *testing.T) {
 		wantErr  string
 		wantName string
 	}{
+		{name: "unicode at limit", input: strings.Repeat("я", maxTagNameLen), wantName: strings.Repeat("я", maxTagNameLen)},
 		{name: "valid", input: "groceries", wantName: "groceries"},
 		{name: "trimmed", input: "  travel  ", wantName: "travel"},
 		{name: "empty", input: "", wantErr: "name is required"},
 		{name: "whitespace only", input: "   ", wantErr: "name is required"},
-		{name: "too long", input: strings.Repeat("a", maxTagNameLen+1), wantErr: "name must be at most 64 characters"},
+		{name: "too long", input: strings.Repeat("a", maxTagNameLen+1), wantErr: "name must be at most 50 characters"},
 		{name: "at limit", input: strings.Repeat("a", maxTagNameLen), wantName: strings.Repeat("a", maxTagNameLen)},
 	}
 

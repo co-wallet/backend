@@ -19,7 +19,7 @@ type CategoryRepo interface {
 	ListByUser(ctx context.Context, userID string, catType model.CategoryType) ([]model.Category, error)
 	Update(ctx context.Context, c model.Category) (model.Category, error)
 	HasTransactions(ctx context.Context, id string) (bool, error)
-	SoftDelete(ctx context.Context, id, userID string) error
+	SetHidden(ctx context.Context, id, userID string, hidden bool) error
 	HardDelete(ctx context.Context, id, userID string) error
 }
 
@@ -77,7 +77,7 @@ func (s *CategoryService) Update(ctx context.Context, userID, id string, req mod
 }
 
 func (s *CategoryService) Delete(ctx context.Context, userID, id string) error {
-	// Verify ownership
+	// Verify the shared entry exists.
 	if _, err := s.repo.GetByID(ctx, id, userID); err != nil {
 		return err
 	}
@@ -87,7 +87,14 @@ func (s *CategoryService) Delete(ctx context.Context, userID, id string) error {
 		return err
 	}
 	if hasTransactions {
-		return s.repo.SoftDelete(ctx, id, userID)
+		return fmt.Errorf("category has linked transactions: %w", apperr.ErrConflict)
 	}
 	return s.repo.HardDelete(ctx, id, userID)
+}
+
+func (s *CategoryService) SetHidden(ctx context.Context, userID, id string, hidden bool) error {
+	if _, err := s.repo.GetByID(ctx, id, userID); err != nil {
+		return err
+	}
+	return s.repo.SetHidden(ctx, id, userID, hidden)
 }

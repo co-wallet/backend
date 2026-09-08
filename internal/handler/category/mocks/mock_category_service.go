@@ -85,6 +85,20 @@ func (mr *MockcategoryServiceMockRecorder) List(ctx, userID, catType any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockcategoryService)(nil).List), ctx, userID, catType)
 }
 
+// SetHidden mocks base method.
+func (m *MockcategoryService) SetHidden(ctx context.Context, userID, id string, hidden bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetHidden", ctx, userID, id, hidden)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetHidden indicates an expected call of SetHidden.
+func (mr *MockcategoryServiceMockRecorder) SetHidden(ctx, userID, id, hidden any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetHidden", reflect.TypeOf((*MockcategoryService)(nil).SetHidden), ctx, userID, id, hidden)
+}
+
 // Update mocks base method.
 func (m *MockcategoryService) Update(ctx context.Context, userID, id string, req model.UpdateCategoryReq) (model.Category, error) {
 	m.ctrl.T.Helper()
