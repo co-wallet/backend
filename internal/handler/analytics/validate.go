@@ -19,6 +19,9 @@ type filterParams struct {
 	DateTo       time.Time
 	AccountIDs   []string
 	AccountKinds []model.AccountKind
+	CategoryIDs  []string
+	TagIDs       []string
+	TagMode      string
 	Currency     string
 	TxType       model.TransactionType
 }
@@ -27,7 +30,10 @@ type filterParams struct {
 // structured параметры. Пустые параметры — допустимы и заполняются
 // дефолтами вызывающей стороной (currency из профиля пользователя).
 func parseFilterParams(q url.Values) (filterParams, error) {
-	p := filterParams{AccountKinds: []model.AccountKind{model.AccountKindSpending}}
+	p := filterParams{
+		AccountKinds: []model.AccountKind{model.AccountKindSpending},
+		TagMode:      "or",
+	}
 
 	now := time.Now()
 
@@ -66,6 +72,21 @@ func parseFilterParams(q url.Values) (filterParams, error) {
 			}
 			p.AccountIDs = append(p.AccountIDs, id)
 		}
+	}
+
+	p.CategoryIDs, err = parseUUIDList(q.Get("category_ids"), "category_ids")
+	if err != nil {
+		return filterParams{}, err
+	}
+	p.TagIDs, err = parseUUIDList(q.Get("tag_ids"), "tag_ids")
+	if err != nil {
+		return filterParams{}, err
+	}
+	if mode := strings.TrimSpace(q.Get("tag_mode")); mode != "" {
+		if mode != "or" && mode != "and" {
+			return filterParams{}, fmt.Errorf("tag_mode must be 'or' or 'and'")
+		}
+		p.TagMode = mode
 	}
 
 	if raw := strings.TrimSpace(q.Get("account_kinds")); raw != "" {
@@ -116,9 +137,32 @@ func (p filterParams) toFilter(userID, defaultCurrency string) model.AnalyticsFi
 		DateTo:          p.DateTo,
 		AccountIDs:      p.AccountIDs,
 		AccountKinds:    p.AccountKinds,
+		CategoryIDs:     p.CategoryIDs,
+		TagIDs:          p.TagIDs,
+		TagMode:         p.TagMode,
 		DisplayCurrency: currency,
 		TxType:          p.TxType,
 	}
+}
+
+func parseUUIDList(raw, field string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	var ids []string
+	for _, id := range strings.Split(raw, ",") {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, err := uuid.Parse(id); err != nil {
+			return nil, fmt.Errorf("%s must contain valid UUIDs", field)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func isAlpha(s string) bool {

@@ -27,6 +27,9 @@ type AnalyticsFilter struct {
 	DateTo          time.Time
 	AccountIDs      []string
 	AccountKinds    []AccountKind
+	CategoryIDs     []string
+	TagIDs          []string
+	TagMode         string
 	DisplayCurrency string          // convert all amounts to this currency (default: USD)
 	TxType          TransactionType // "expense" (default) or "income"
 }

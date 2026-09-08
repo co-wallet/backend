@@ -89,3 +89,82 @@ func TestBuildByCategoryQueryIncludesUncategorizedTransactions(t *testing.T) {
 		}
 	}
 }
+
+func TestTransactionFilterMatchesListSemantics(t *testing.T) {
+	tests := []struct {
+		name         string
+		filter       model.AnalyticsFilter
+		wantContains []string
+		wantArgs     []any
+		wantNext     int
+	}{
+		{
+			name: "category and any tag",
+			filter: model.AnalyticsFilter{
+				CategoryIDs: []string{"category-1"},
+				TagIDs:      []string{"tag-1", "tag-2"},
+				TagMode:     "or",
+			},
+			wantContains: []string{
+				"t.category_id = ANY($2)",
+				"tt_filter.tag_id = ANY($3)",
+			},
+			wantArgs: []any{"user-id", []string{"category-1"}, []string{"tag-1", "tag-2"}},
+			wantNext: 4,
+		},
+		{
+			name: "all selected tags",
+			filter: model.AnalyticsFilter{
+				TagIDs:  []string{"tag-1", "tag-2"},
+				TagMode: "and",
+			},
+			wantContains: []string{
+				"tt_filter.tag_id = $2",
+				"tt_filter.tag_id = $3",
+			},
+			wantArgs: []any{"user-id", "tag-1", "tag-2"},
+			wantNext: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			condition, args, next := transactionFilter(tt.filter, []any{"user-id"}, 2)
+			for _, substr := range tt.wantContains {
+				if !strings.Contains(condition, substr) {
+					t.Errorf("transaction filter missing %q: %s", substr, condition)
+				}
+			}
+			if !reflect.DeepEqual(args, tt.wantArgs) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			if next != tt.wantNext {
+				t.Fatalf("unexpected next placeholder: %d", next)
+			}
+		})
+	}
+}
+
+func TestBuildByCategoryQueryIncludesTransactionFilters(t *testing.T) {
+	query, args := buildByCategoryQuery(model.AnalyticsFilter{
+		UserID:          "user-id",
+		CategoryIDs:     []string{"category-1"},
+		TagIDs:          []string{"tag-1"},
+		TagMode:         "or",
+		DisplayCurrency: "RUB",
+	})
+
+	for _, substr := range []string{
+		"t.category_id = ANY($2)",
+		"tt_filter.tag_id = ANY($3)",
+		"quote_currency = $4",
+		"t.type = $7",
+	} {
+		if !strings.Contains(query, substr) {
+			t.Errorf("by-category query missing %q\n--- got ---\n%s", substr, query)
+		}
+	}
+	if len(args) != 7 {
+		t.Fatalf("unexpected args length: %d (%#v)", len(args), args)
+	}
+}
