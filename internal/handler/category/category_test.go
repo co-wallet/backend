@@ -16,7 +16,6 @@ import (
 	"github.com/co-wallet/backend/internal/handler/category/mocks"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/model"
-	"github.com/co-wallet/backend/internal/service"
 )
 
 type CategoryHandlerSuite struct {
@@ -49,13 +48,13 @@ func withCategoryParam(req *http.Request, id string) *http.Request {
 func (s *CategoryHandlerSuite) TestList_Success() {
 	s.svc.EXPECT().
 		List(gomock.Any(), "u1", model.CategoryTypeExpense).
-		Return([]service.CategoryNode{{Category: model.Category{ID: "c1", Name: "Food"}}}, nil)
+		Return([]model.Category{{ID: "c1", Name: "Food"}, {ID: "c2", Name: "Restaurants"}}, nil)
 
 	req := withUser(httptest.NewRequest(http.MethodGet, "/categories?type=expense", nil), "u1")
 	rec := httptest.NewRecorder()
 	s.h.List(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
-	s.Contains(rec.Body.String(), `"Food"`)
+	s.JSONEq(`[{"id":"c1","userId":"","name":"Food","type":"","icon":null,"createdAt":"0001-01-01T00:00:00Z"},{"id":"c2","userId":"","name":"Restaurants","type":"","icon":null,"createdAt":"0001-01-01T00:00:00Z"}]`, rec.Body.String())
 }
 
 func (s *CategoryHandlerSuite) TestList_InvalidType() {
@@ -133,4 +132,13 @@ func (s *CategoryHandlerSuite) TestDelete_Conflict() {
 	rec := httptest.NewRecorder()
 	s.h.Delete(rec, req)
 	s.Equal(http.StatusConflict, rec.Code)
+}
+
+func (s *CategoryHandlerSuite) TestList_Empty() {
+	s.svc.EXPECT().List(gomock.Any(), "u1", model.CategoryTypeIncome).Return(nil, nil)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/categories?type=income", nil), "u1")
+	rec := httptest.NewRecorder()
+	s.h.List(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+	s.JSONEq("[]", rec.Body.String())
 }

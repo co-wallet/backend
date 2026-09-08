@@ -18,12 +18,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tree, err := h.service.List(r.Context(), userID, catType)
+	categories, err := h.service.List(r.Context(), userID, catType)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	jsonResponse(w, toCategoryNodeResponses(tree), http.StatusOK)
+	jsonResponse(w, toCategoryResponses(categories), http.StatusOK)
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {

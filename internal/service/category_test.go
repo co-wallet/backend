@@ -10,19 +10,8 @@ import (
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
-	"github.com/co-wallet/backend/internal/ptr"
 	"github.com/co-wallet/backend/internal/service/mocks"
 )
-
-func cat(id string, parentID *string, name string) model.Category {
-	return model.Category{
-		ID:       id,
-		UserID:   "user1",
-		ParentID: parentID,
-		Name:     name,
-		Type:     model.CategoryTypeExpense,
-	}
-}
 
 // --- suite ---
 
@@ -77,30 +66,6 @@ func (s *CategoryServiceSuite) TestCreate_NameTrimmed() {
 	_, _ = s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{Name: "  Food  ", Type: model.CategoryTypeExpense})
 }
 
-func (s *CategoryServiceSuite) TestCreate_ParentTypeMismatch() {
-	parentID := "parent1"
-	s.repo.EXPECT().
-		GetByID(gomock.Any(), parentID, "user1").
-		Return(model.Category{ID: parentID, Type: model.CategoryTypeIncome}, nil)
-
-	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "Food", Type: model.CategoryTypeExpense, ParentID: &parentID,
-	})
-	s.True(errors.Is(err, apperr.ErrValidation))
-}
-
-func (s *CategoryServiceSuite) TestCreate_ParentNotFound() {
-	parentID := "missing"
-	s.repo.EXPECT().
-		GetByID(gomock.Any(), parentID, "user1").
-		Return(model.Category{}, apperr.ErrNotFound)
-
-	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{
-		Name: "Food", Type: model.CategoryTypeExpense, ParentID: &parentID,
-	})
-	s.True(errors.Is(err, apperr.ErrNotFound))
-}
-
 // --- Update ---
 
 func (s *CategoryServiceSuite) TestUpdate_Success() {
@@ -143,27 +108,16 @@ func (s *CategoryServiceSuite) TestUpdate_NotFound() {
 
 // --- Delete ---
 
-func (s *CategoryServiceSuite) TestDelete_HardDeleteForLeaf() {
+func (s *CategoryServiceSuite) TestDelete_HardDeleteWithoutTransactions() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
-	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(false, nil)
 	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, nil)
 	s.repo.EXPECT().HardDelete(gomock.Any(), "id1", "user1").Return(nil)
 
 	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
 }
 
-func (s *CategoryServiceSuite) TestDelete_SoftDeleteWhenHasChildren() {
-	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
-	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(true, nil)
-	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, nil)
-	s.repo.EXPECT().SoftDelete(gomock.Any(), "id1", "user1").Return(nil)
-
-	s.NoError(s.svc.Delete(context.Background(), "user1", "id1"))
-}
-
 func (s *CategoryServiceSuite) TestDelete_SoftDeleteWhenHasTransactions() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
-	s.repo.EXPECT().HasChildren(gomock.Any(), "id1").Return(false, nil)
 	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(true, nil)
 	s.repo.EXPECT().SoftDelete(gomock.Any(), "id1", "user1").Return(nil)
 
@@ -177,76 +131,45 @@ func (s *CategoryServiceSuite) TestDelete_NotFound() {
 	s.True(errors.Is(err, apperr.ErrNotFound))
 }
 
-// --- List (table-driven, tests buildTree through public API) ---
-
 func (s *CategoryServiceSuite) TestList() {
-	tests := []struct {
-		name       string
-		repoResult []model.Category
-		wantRoots  int
-		wantChild  string // expected first child name of first root, "" to skip
-	}{
-		{
-			name:       "empty returns empty slice",
-			repoResult: nil,
-			wantRoots:  0,
-		},
-		{
-			name:       "single root, no children",
-			repoResult: []model.Category{cat("1", nil, "Food")},
-			wantRoots:  1,
-		},
-		{
-			name: "root with one child",
-			repoResult: []model.Category{
-				cat("1", nil, "Food"),
-				cat("2", ptr.To("1"), "Restaurants"),
-			},
-			wantRoots: 1,
-			wantChild: "Restaurants",
-		},
-		{
-			name: "multiple roots",
-			repoResult: []model.Category{
-				cat("1", nil, "Food"),
-				cat("2", nil, "Transport"),
-			},
-			wantRoots: 2,
-		},
-		{
-			name: "orphaned node surfaces as root",
-			repoResult: []model.Category{
-				cat("2", ptr.To("missing"), "Restaurants"),
-			},
-			wantRoots: 1,
-		},
-		{
-			name: "three levels deep",
-			repoResult: []model.Category{
-				cat("1", nil, "Food"),
-				cat("2", ptr.To("1"), "Restaurants"),
-				cat("3", ptr.To("2"), "FastFood"),
-			},
-			wantRoots: 1,
-			wantChild: "Restaurants",
-		},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			s.repo.EXPECT().
-				ListByUser(gomock.Any(), "user1", model.CategoryTypeExpense).
-				Return(tt.repoResult, nil)
-
-			tree, err := s.svc.List(context.Background(), "user1", model.CategoryTypeExpense)
-			s.NoError(err)
-			s.NotNil(tree)
-			s.Len(tree, tt.wantRoots)
-
-			if tt.wantChild != "" && len(tree) > 0 {
-				s.Len(tree[0].Children, 1)
-				s.Equal(tt.wantChild, tree[0].Children[0].Name)
+	for _, catType := range []model.CategoryType{model.CategoryTypeExpense, model.CategoryTypeIncome} {
+		s.Run(string(catType), func() {
+			categories := []model.Category{
+				{ID: "1", Name: "Food", UserID: "user1", Type: catType},
+				{ID: "2", Name: "Restaurants", UserID: "user1", Type: catType},
 			}
+			s.repo.EXPECT().ListByUser(gomock.Any(), "user1", catType).Return(categories, nil)
+			got, err := s.svc.List(context.Background(), "user1", catType)
+			s.NoError(err)
+			s.Equal(categories, got)
 		})
 	}
+}
+
+func (s *CategoryServiceSuite) TestList_Empty() {
+	s.repo.EXPECT().ListByUser(gomock.Any(), "user1", model.CategoryTypeExpense).Return(nil, nil)
+	got, err := s.svc.List(context.Background(), "user1", model.CategoryTypeExpense)
+	s.NoError(err)
+	s.NotNil(got)
+	s.Empty(got)
+}
+
+func (s *CategoryServiceSuite) TestList_RepositoryError() {
+	repoErr := errors.New("database unavailable")
+	s.repo.EXPECT().ListByUser(gomock.Any(), "user1", model.CategoryTypeExpense).Return(nil, repoErr)
+	_, err := s.svc.List(context.Background(), "user1", model.CategoryTypeExpense)
+	s.ErrorIs(err, repoErr)
+}
+
+func (s *CategoryServiceSuite) TestCreate_Conflict() {
+	s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Category{}, apperr.ErrConflict)
+	_, err := s.svc.Create(context.Background(), "user1", model.CreateCategoryReq{Name: "Food", Type: model.CategoryTypeExpense})
+	s.ErrorIs(err, apperr.ErrConflict)
+}
+
+func (s *CategoryServiceSuite) TestDelete_TransactionCheckError() {
+	repoErr := errors.New("database unavailable")
+	s.repo.EXPECT().GetByID(gomock.Any(), "id1", "user1").Return(model.Category{ID: "id1"}, nil)
+	s.repo.EXPECT().HasTransactions(gomock.Any(), "id1").Return(false, repoErr)
+	s.ErrorIs(s.svc.Delete(context.Background(), "user1", "id1"), repoErr)
 }

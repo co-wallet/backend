@@ -8,10 +8,9 @@ import (
 )
 
 type createCategoryReq struct {
-	ParentID *string             `json:"parentId"`
-	Name     string              `json:"name"`
-	Type     model.CategoryType  `json:"type"`
-	Icon     *string             `json:"icon"`
+	Name string             `json:"name"`
+	Type model.CategoryType `json:"type"`
+	Icon *string            `json:"icon"`
 }
 
 func (r *createCategoryReq) validate() error {
@@ -26,10 +25,9 @@ func (r *createCategoryReq) validate() error {
 
 func (r *createCategoryReq) toModelReq() model.CreateCategoryReq {
 	return model.CreateCategoryReq{
-		ParentID: r.ParentID,
-		Name:     strings.TrimSpace(r.Name),
-		Type:     r.Type,
-		Icon:     r.Icon,
+		Name: strings.TrimSpace(r.Name),
+		Type: r.Type,
+		Icon: r.Icon,
 	}
 }
 

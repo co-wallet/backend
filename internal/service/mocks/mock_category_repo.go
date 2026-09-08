@@ -85,21 +85,6 @@ func (mr *MockCategoryRepoMockRecorder) HardDelete(ctx, id, userID any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HardDelete", reflect.TypeOf((*MockCategoryRepo)(nil).HardDelete), ctx, id, userID)
 }
 
-// HasChildren mocks base method.
-func (m *MockCategoryRepo) HasChildren(ctx context.Context, id string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasChildren", ctx, id)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// HasChildren indicates an expected call of HasChildren.
-func (mr *MockCategoryRepoMockRecorder) HasChildren(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasChildren", reflect.TypeOf((*MockCategoryRepo)(nil).HasChildren), ctx, id)
-}
-
 // HasTransactions mocks base method.
 func (m *MockCategoryRepo) HasTransactions(ctx context.Context, id string) (bool, error) {
 	m.ctrl.T.Helper()
