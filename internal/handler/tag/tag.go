@@ -53,3 +53,36 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *Handler) SetHidden(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Hidden *bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Hidden == nil {
+		jsonError(w, "hidden is required", http.StatusBadRequest)
+		return
+	}
+	if err := h.service.SetHidden(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "tagID"), *req.Hidden); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	var req renameTagReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := req.validate(); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	tag, err := h.service.Create(r.Context(), middleware.UserIDFromCtx(r.Context()), req.Name)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	jsonResponse(w, toTagResponse(tag), http.StatusCreated)
+}

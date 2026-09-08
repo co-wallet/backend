@@ -100,3 +100,54 @@ func (s *TagServiceSuite) TestDelete_NotFound() {
 	err := s.svc.Delete(ctx, "u1", "t99")
 	s.True(errors.Is(err, apperr.ErrNotFound))
 }
+
+func (s *TagServiceSuite) TestSetHidden_PersonalPreference() {
+	for _, hidden := range []bool{true, false} {
+		s.repo.EXPECT().GetByID(gomock.Any(), "entry", "viewer").Return(model.Tag{ID: "entry", UserID: "creator"}, nil)
+		s.repo.EXPECT().SetHidden(gomock.Any(), "entry", "viewer", hidden).Return(nil)
+		s.NoError(s.svc.SetHidden(context.Background(), "viewer", "entry", hidden))
+	}
+}
+
+func (s *TagServiceSuite) TestSetHidden_NotFound() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "missing", "viewer").Return(model.Tag{}, apperr.ErrNotFound)
+	s.ErrorIs(s.svc.SetHidden(context.Background(), "viewer", "missing", true), apperr.ErrNotFound)
+}
+
+func (s *TagServiceSuite) TestSetHidden_RepositoryError() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "entry", "viewer").Return(model.Tag{ID: "entry"}, nil)
+	repoErr := errors.New("database unavailable")
+	s.repo.EXPECT().SetHidden(gomock.Any(), "entry", "viewer", true).Return(repoErr)
+	s.ErrorIs(s.svc.SetHidden(context.Background(), "viewer", "entry", true), repoErr)
+}
+
+func (s *TagServiceSuite) TestCreate_NormalizesSharedName() {
+	s.repo.EXPECT().Create(gomock.Any(), model.Tag{UserID: "u2", Name: "отпуск"}).Return(model.Tag{ID: "new", Name: "отпуск"}, nil)
+	got, err := s.svc.Create(context.Background(), "u2", " Отпуск ")
+	s.NoError(err)
+	s.Equal("new", got.ID)
+}
+
+func (s *TagServiceSuite) TestCreate_InvalidName() {
+	_, err := s.svc.Create(context.Background(), "u2", "  ")
+	s.ErrorIs(err, apperr.ErrValidation)
+}
+
+func (s *TagServiceSuite) TestCreate_Conflict() {
+	s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Tag{}, apperr.ErrConflict)
+	_, err := s.svc.Create(context.Background(), "u2", "duplicate")
+	s.ErrorIs(err, apperr.ErrConflict)
+}
+
+func (s *TagServiceSuite) TestDelete_LinkedTransactionsConflict() {
+	s.repo.EXPECT().Delete(gomock.Any(), "t1", "u2").Return(apperr.ErrConflict)
+	s.ErrorIs(s.svc.Delete(context.Background(), "u2", "t1"), apperr.ErrConflict)
+}
+
+func (s *TagServiceSuite) TestRename_OtherCreator() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "t1", "u2").Return(model.Tag{ID: "t1", UserID: "u1"}, nil)
+	s.repo.EXPECT().Update(gomock.Any(), model.Tag{ID: "t1", UserID: "u1", Name: "new"}).Return(model.Tag{ID: "t1", Name: "new"}, nil)
+	got, err := s.svc.Rename(context.Background(), "u2", "t1", " New ")
+	s.NoError(err)
+	s.Equal("new", got.Name)
+}

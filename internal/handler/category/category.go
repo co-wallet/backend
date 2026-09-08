@@ -78,3 +78,18 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *Handler) SetHidden(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Hidden *bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Hidden == nil {
+		jsonError(w, "hidden is required", http.StatusBadRequest)
+		return
+	}
+	if err := h.service.SetHidden(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "categoryID"), *req.Hidden); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

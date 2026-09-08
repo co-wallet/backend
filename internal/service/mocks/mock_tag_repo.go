@@ -41,6 +41,21 @@ func (m *MockTagRepo) EXPECT() *MockTagRepoMockRecorder {
 	return m.recorder
 }
 
+// Create mocks base method.
+func (m *MockTagRepo) Create(ctx context.Context, t model.Tag) (model.Tag, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Create", ctx, t)
+	ret0, _ := ret[0].(model.Tag)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Create indicates an expected call of Create.
+func (mr *MockTagRepoMockRecorder) Create(ctx, t any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockTagRepo)(nil).Create), ctx, t)
+}
+
 // Delete mocks base method.
 func (m *MockTagRepo) Delete(ctx context.Context, id, userID string) error {
 	m.ctrl.T.Helper()
@@ -113,6 +128,20 @@ func (m *MockTagRepo) ListForTransactions(ctx context.Context, txIDs []string) (
 func (mr *MockTagRepoMockRecorder) ListForTransactions(ctx, txIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListForTransactions", reflect.TypeOf((*MockTagRepo)(nil).ListForTransactions), ctx, txIDs)
+}
+
+// SetHidden mocks base method.
+func (m *MockTagRepo) SetHidden(ctx context.Context, id, userID string, hidden bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetHidden", ctx, id, userID, hidden)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetHidden indicates an expected call of SetHidden.
+func (mr *MockTagRepoMockRecorder) SetHidden(ctx, id, userID, hidden any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetHidden", reflect.TypeOf((*MockTagRepo)(nil).SetHidden), ctx, id, userID, hidden)
 }
 
 // Update mocks base method.

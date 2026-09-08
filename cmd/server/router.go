@@ -88,6 +88,7 @@ func newRouter(
 			r.Get("/categories", categoryHandler.List)
 			r.Post("/categories", categoryHandler.Create)
 			r.Route("/categories/{categoryID}", func(r chi.Router) {
+				r.Put("/visibility", categoryHandler.SetHidden)
 				r.Patch("/", categoryHandler.Update)
 				r.Delete("/", categoryHandler.Delete)
 			})
@@ -114,7 +115,9 @@ func newRouter(
 			})
 
 			r.Get("/tags", tagHandler.List)
+			r.Post("/tags", tagHandler.Create)
 			r.Route("/tags/{tagID}", func(r chi.Router) {
+				r.Put("/visibility", tagHandler.SetHidden)
 				r.Patch("/", tagHandler.Rename)
 				r.Delete("/", tagHandler.Delete)
 			})

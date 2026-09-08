@@ -6,6 +6,7 @@ type Tag struct {
 	ID        string
 	UserID    string
 	Name      string
+	Hidden    bool
 	CreatedAt time.Time
 }
 
