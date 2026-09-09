@@ -60,3 +60,16 @@ func TestAvailabilityAndConfirmContract(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"transactions":2`)
 }
+
+func TestOptionsAppearanceContract(t *testing.T) {
+	svc := mocks.NewMockimportService(gomock.NewController(t))
+	h := New(svc)
+	r := chi.NewRouter()
+	r.Post("/{previewID}/options", h.Configure)
+	svc.EXPECT().Configure(gomock.Any(), "user", "id", map[string]model.AccountKind{"a": "spending"}, map[string]string{"c": "preset:cafe|red|none"}, map[string]string{"a": "preset:cash|pink|pink"}).Return(model.ImportPreview{ID: "new"}, nil)
+	req := httptest.NewRequest("POST", "/id/options", strings.NewReader(`{"account_kinds":{"a":"spending"},"category_icons":{"c":"preset:cafe|red|none"},"account_icons":{"a":"preset:cash|pink|pink"}}`)).WithContext(context.WithValue(context.Background(), middleware.ContextUserID, "user"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.Contains(t, w.Body.String(), `"preview_id":"new"`)
+}

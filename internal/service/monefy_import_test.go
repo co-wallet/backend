@@ -70,7 +70,7 @@ func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
 	p, err := s.svc.Preview(context.Background(), s.user, f)
 	s.Require().NoError(err)
 	s.Equal("-3728.391", p.Accounts[0].Balance)
-	s.Equal("preset:debit-card", p.Accounts[0].Icon)
+	s.True(strings.HasPrefix(p.Accounts[0].Icon, "preset:cash|"))
 	byID := map[string]string{}
 	for _, a := range p.Accounts {
 		byID[a.SourceID] = a.Balance
@@ -86,11 +86,15 @@ func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(nil)
-	configured, err := s.svc.Configure(context.Background(), s.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "spending"}, nil)
+	configured, err := s.svc.Configure(context.Background(), s.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "spending"}, nil, nil)
 	s.Require().NoError(err)
 	s.NotEqual(p.ID, configured.ID)
 	s.Equal(p.SHA256, configured.SHA256)
 	s.True(configured.Report.CanImport())
+	s.Equal(p.CategoryIcons, configured.CategoryIcons)
+	s.Equal(p.AccountIcons, configured.AccountIcons)
+	s.Equal(p.Report.Transactions, configured.Report.Transactions)
+	s.Equal(p.Report.Transfers, configured.Report.Transfers)
 	for _, account := range configured.Accounts {
 		want := model.AccountKindSpending
 		if account.SourceID == "travel" {
@@ -116,7 +120,7 @@ func (s *ImportSuite) TestInvalidKinds() {
 	p := model.ImportPreview{Report: monefy.Report{Accounts: []monefy.Account{{ID: "a"}}}}
 	s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
-	_, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "unknown"}, nil)
+	_, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "unknown"}, nil, nil)
 	s.ErrorIs(err, apperr.ErrValidation)
 }
 func (s *ImportSuite) confirmStart(p model.ImportPreview) {
@@ -184,7 +188,7 @@ func (s *ImportSuite) TestDestinationDiagnostics() {
 			s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 			s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
 			s.store.EXPECT().Save(gomock.Any()).Return(nil)
-			got, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "spending"}, nil)
+			got, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "spending"}, nil, nil)
 			s.Require().NoError(err)
 			found := false
 			for _, d := range got.Report.Diagnostics {
@@ -209,7 +213,7 @@ func (s *ImportSuite) TestCategoryIconOptionsPersistAcrossConfiguration() {
 		s.Equal(sharedIcon, saved.Categories[1].Icon)
 		return nil
 	})
-	configured, err := s.svc.Configure(context.Background(), s.user, s.id, nil, map[string]string{"new": "preset:groceries|red|none"})
+	configured, err := s.svc.Configure(context.Background(), s.user, s.id, nil, map[string]string{"new": "preset:groceries|red|none"}, nil)
 	s.Require().NoError(err)
 	s.Empty(p.CategoryIcons)
 	s.NotEqual(p.ID, configured.ID)
@@ -217,7 +221,7 @@ func (s *ImportSuite) TestCategoryIconOptionsPersistAcrossConfiguration() {
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(catalog, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(nil)
-	again, err := s.svc.Configure(context.Background(), s.user, configured.ID, nil, nil)
+	again, err := s.svc.Configure(context.Background(), s.user, configured.ID, nil, nil, nil)
 	s.Require().NoError(err)
 	s.Equal(configured.Categories, again.Categories)
 }
@@ -225,6 +229,8 @@ func (s *ImportSuite) TestCategoryIconOptionsPersistAcrossConfiguration() {
 func (s *ImportSuite) TestInvalidCategoryIcons() {
 	for _, tt := range []struct{ name, id, icon string }{
 		{"emoji", "new", "📁"}, {"custom text", "new", "custom:AB"},
+		{"unknown preset", "new", "preset:unsupported"},
+		{"extra fields", "new", "preset:other|blue|blue|red"},
 		{"bad color", "new", "preset:other|invisible|none"},
 		{"unknown category", "missing", "preset:other"}, {"shared category", "shared", "preset:other"},
 	} {
@@ -232,7 +238,7 @@ func (s *ImportSuite) TestInvalidCategoryIcons() {
 			p := model.ImportPreview{Categories: []model.ImportCategory{{SourceID: "new"}, {SourceID: "shared", ExistingID: "existing"}}}
 			s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
 			s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
-			_, err := s.svc.Configure(context.Background(), s.user, s.id, nil, map[string]string{tt.id: tt.icon})
+			_, err := s.svc.Configure(context.Background(), s.user, s.id, nil, map[string]string{tt.id: tt.icon}, nil)
 			s.ErrorIs(err, apperr.ErrValidation)
 			var typed *ImportError
 			s.Require().ErrorAs(err, &typed)
@@ -247,10 +253,128 @@ func (s *ImportSuite) TestPreviewStorageCapacityError() {
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(preview.ErrCapacity)
-	_, err := s.svc.Configure(context.Background(), s.user, s.id, nil, nil)
+	_, err := s.svc.Configure(context.Background(), s.user, s.id, nil, nil, nil)
 	s.ErrorIs(err, apperr.ErrConflict)
 	s.ErrorIs(err, preview.ErrCapacity)
 	var typed *ImportError
 	s.Require().ErrorAs(err, &typed)
 	s.Equal("preview_storage_full", typed.Code)
+}
+
+func (s *ImportSuite) TestSemanticAppearanceOnFirstPreview() {
+	cases := []struct{ name, kind, preset string }{
+		{"Продукты", "expense", "groceries"}, {"ПРОДУКТЫ", "expense", "groceries"},
+		{"Супермаркет", "expense", "groceries"}, {"Groceries", "expense", "groceries"},
+		{"Кафе", "expense", "cafe"}, {"КОФЕ", "expense", "cafe"}, {"Coffee shop", "expense", "cafe"},
+		{"Транспорт", "expense", "bus"}, {"ПРОЕЗД", "expense", "bus"}, {"Transport", "expense", "bus"},
+		{"Зарплата", "income", "salary"}, {"ЗАРАБОТНАЯ ПЛАТА", "income", "salary"}, {"З/П", "income", "salary"}, {"Salary", "income", "salary"},
+		{"Кафе", "income", "other"}, {"Зарплата", "expense", "other"},
+		{"Подарки", "expense", "gifts"}, {"Подарки", "income", "gift-income"},
+		{"Наличные", "account", "cash"}, {"НАЛИЧКА", "account", "cash"}, {"Cash RUB", "account", "cash"},
+		{"Карта", "account", "debit-card"}, {"КАРТОЧКА", "account", "debit-card"}, {"Debit card", "account", "debit-card"},
+		{"Кредитная карта", "account", "credit-card"}, {"КОШЕЛЁК", "account", "wallet"},
+		{"Картография", "account", "wallet"}, {"Абракадабра", "account", "wallet"}, {"Абракадабра", "expense", "other"},
+	}
+	path := filepath.Join(s.T().TempDir(), "names.db")
+	d, err := sql.Open("sqlite", path)
+	s.Require().NoError(err)
+	fixture, err := os.ReadFile("../importer/monefy/testdata/v11.sql")
+	s.Require().NoError(err)
+	_, err = d.Exec(string(fixture))
+	s.Require().NoError(err)
+	_, err = d.Exec(`UPDATE Account SET InitialBalanceCents=1000 WHERE Id='travel'`)
+	s.Require().NoError(err)
+	ids := make([]string, len(cases))
+	for i, tc := range cases {
+		ids[i] = uuid.NewString()
+		if tc.kind == "account" {
+			_, err = d.Exec(`INSERT INTO Account VALUES (?, ?, 1, 638396640000000000, 0, 1, 643, NULL, NULL)`, ids[i], tc.name)
+		} else {
+			categoryType := 1
+			if tc.kind == "income" {
+				categoryType = 0
+			}
+			_, err = d.Exec(`INSERT INTO Category VALUES (?, ?, ?, 1, NULL, NULL)`, ids[i], tc.name, categoryType)
+		}
+		s.Require().NoError(err)
+	}
+	s.Require().NoError(d.Close())
+	f, err := os.Open(path)
+	s.Require().NoError(err)
+	defer f.Close() //nolint:errcheck
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(nil)
+	p, err := s.svc.Preview(context.Background(), s.user, f)
+	s.Require().NoError(err)
+	actual := map[string]string{}
+	for _, a := range p.Accounts {
+		actual[a.SourceID] = a.Icon
+	}
+	for _, c := range p.Categories {
+		actual[c.SourceID] = c.Icon
+	}
+	for i, tc := range cases {
+		s.Run(tc.kind+"/"+tc.name, func() {
+			parts := strings.Split(actual[ids[i]], "|")
+			s.Require().Len(parts, 3)
+			s.Equal("preset:"+tc.preset, parts[0])
+			s.Contains([]string{"blue", "purple", "pink", "red", "orange", "green", "yellow", "graphite"}, parts[1])
+			s.Equal(parts[1], parts[2])
+		})
+	}
+}
+
+func (s *ImportSuite) TestAccountAppearanceIsImmutableAndConfirmed() {
+	p := model.ImportPreview{ID: s.id, UserID: s.user, Report: monefy.Report{
+		Accounts: []monefy.Account{{ID: "a", Name: "Наличные", Currency: "RUB", InitialBalance: 12345}},
+	}, Accounts: []model.ImportAccount{{SourceID: "a", Kind: "spending", Icon: "preset:cash|green|green", Balance: "12.345"}}, AccountIcons: map[string]string{"a": "preset:cash|green|green"}}
+	chosen := "preset:wallet|pink|none"
+	s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(nil)
+	configured, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "deposit"}, nil, map[string]string{"a": chosen})
+	s.Require().NoError(err)
+	s.Equal("preset:cash|green|green", p.AccountIcons["a"])
+	s.Equal("preset:cash|green|green", p.Accounts[0].Icon)
+	s.Equal(chosen, configured.Accounts[0].Icon)
+	s.Equal(p.Accounts[0].Balance, configured.Accounts[0].Balance)
+	s.Equal(p.Report.Accounts, configured.Report.Accounts)
+	s.store.EXPECT().Load(s.user, configured.ID).Return(configured, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(nil)
+	again, err := s.svc.Configure(context.Background(), s.user, configured.ID, map[string]model.AccountKind{"a": "investment"}, nil, nil)
+	s.Require().NoError(err)
+	s.Equal(chosen, again.Accounts[0].Icon)
+	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+	s.repo.EXPECT().Receipt(gomock.Any(), s.user, again.ID).Return(model.ImportResult{}, apperr.ErrNotFound)
+	s.store.EXPECT().Load(s.user, again.ID).Return(again, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), true).Return(nil, nil)
+	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB"}, nil)
+	s.repo.EXPECT().Write(gomock.Any(), again).Return(model.ImportResult{PreviewID: again.ID}, nil)
+	s.store.EXPECT().Delete(s.user, again.ID).Return(nil)
+	_, err = s.svc.Confirm(context.Background(), s.user, again.ID, true)
+	s.Require().NoError(err)
+}
+
+func (s *ImportSuite) TestInvalidAccountIcons() {
+	for _, tc := range []struct{ id, icon string }{
+		{"a", "💰"}, {"a", "custom:AB"}, {"a", "preset:unknown"}, {"a", "preset:salary"},
+		{"a", "preset:cash|neon|blue"}, {"a", "preset:cash|blue|blue|extra"}, {"missing", "preset:cash"},
+	} {
+		s.Run(tc.id+tc.icon, func() {
+			p := model.ImportPreview{Report: monefy.Report{Accounts: []monefy.Account{{ID: "a"}}}}
+			s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+			s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+			_, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "spending"}, nil, map[string]string{tc.id: tc.icon})
+			s.ErrorIs(err, apperr.ErrValidation)
+			var typed *ImportError
+			s.Require().ErrorAs(err, &typed)
+			s.Equal("invalid_account_icons", typed.Code)
+		})
+	}
 }

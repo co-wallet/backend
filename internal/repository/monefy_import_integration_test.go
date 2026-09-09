@@ -84,7 +84,7 @@ func (f *importFixture) configured(t *testing.T) model.ImportPreview {
 	defer src.Close() //nolint:errcheck
 	p, err := f.svc.Preview(context.Background(), f.user, src)
 	require.NoError(t, err)
-	p, err = f.svc.Configure(context.Background(), f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil)
+	p, err = f.svc.Configure(context.Background(), f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
 	require.True(t, p.Report.CanImport(), p.Report.Diagnostics)
 	return p
@@ -181,7 +181,7 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	p, err := f.svc.Preview(ctx, f.user, src)
 	require.NoError(t, err)
 	require.NoError(t, src.Close())
-	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil)
+	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, p.Report.Exclusions, 1)
 	_, err = f.svc.Confirm(ctx, f.user, p.ID, false)
@@ -190,7 +190,7 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	require.NoError(t, err)
 	_, err = f.svc.Confirm(ctx, f.user, p.ID, true)
 	require.ErrorContains(t, err, "catalog_changed")
-	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil)
+	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
 	result, err := f.svc.Confirm(ctx, f.user, p.ID, true)
 	require.NoError(t, err)
@@ -291,13 +291,24 @@ func TestMonefyCategoryIconsPersistOnImport(t *testing.T) {
 	kinds := map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}
 	chosen := "preset:groceries|purple|none"
 	category := p.Categories[0]
-	configured, err := f.svc.Configure(ctx, f.user, p.ID, kinds, map[string]string{category.SourceID: chosen})
+	configured, err := f.svc.Configure(ctx, f.user, p.ID, kinds, map[string]string{category.SourceID: chosen}, map[string]string{"cash": "preset:wallet|pink|none"})
 	require.NoError(t, err)
 	_, err = f.svc.Confirm(ctx, f.user, configured.ID, true)
 	require.NoError(t, err)
 	var icon string
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT icon FROM categories WHERE user_id=$1 AND name=$2`, f.user, category.Name).Scan(&icon))
 	require.Equal(t, chosen, icon)
+	for _, account := range configured.Accounts {
+		var savedIcon string
+		var name string
+		for _, source := range configured.Report.Accounts {
+			if source.ID == account.SourceID {
+				name = source.Name
+			}
+		}
+		require.NoError(t, f.pool.QueryRow(ctx, `SELECT icon FROM accounts WHERE owner_id=$1 AND name=$2`, f.user, name).Scan(&savedIcon))
+		require.Equal(t, account.Icon, savedIcon)
+	}
 	var nonPreset int
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE owner_id=$1 AND icon NOT LIKE 'preset:%'`, f.user).Scan(&nonPreset))
 	require.Zero(t, nonPreset)

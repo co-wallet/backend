@@ -58,18 +58,18 @@ func (mr *MockimportServiceMockRecorder) Availability(arg0, arg1 any) *gomock.Ca
 }
 
 // Configure mocks base method.
-func (m *MockimportService) Configure(arg0 context.Context, arg1, arg2 string, arg3 map[string]model.AccountKind, arg4 map[string]string) (model.ImportPreview, error) {
+func (m *MockimportService) Configure(arg0 context.Context, arg1, arg2 string, arg3 map[string]model.AccountKind, arg4, arg5 map[string]string) (model.ImportPreview, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Configure", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "Configure", arg0, arg1, arg2, arg3, arg4, arg5)
 	ret0, _ := ret[0].(model.ImportPreview)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Configure indicates an expected call of Configure.
-func (mr *MockimportServiceMockRecorder) Configure(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockimportServiceMockRecorder) Configure(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Configure", reflect.TypeOf((*MockimportService)(nil).Configure), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Configure", reflect.TypeOf((*MockimportService)(nil).Configure), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
 // Confirm mocks base method.
