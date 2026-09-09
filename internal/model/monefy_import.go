@@ -14,6 +14,7 @@ type ImportPreview struct {
 	Report               monefy.Report
 	Accounts             []ImportAccount
 	Categories           []ImportCategory
+	CategoryIcons        map[string]string
 	PeriodFrom, PeriodTo *time.Time
 }
 
