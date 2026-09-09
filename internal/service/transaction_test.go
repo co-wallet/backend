@@ -588,3 +588,11 @@ func (s *TransactionServiceSuite) TestTransferRecipientPrivacy() {
 	s.Empty(listed[0].Tags)
 	s.Equal(90.0, *listed[0].ToAmount)
 }
+
+func (s *TransactionServiceSuite) TestUpdate_TransferRequiresDestinationRelation() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "source", Type: model.TransactionTypeTransfer, Currency: "USD", Amount: 100}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
+	_, err := s.svc.Update(ctx, "sender", "tx", model.UpdateTransactionReq{Amount: ptr.To(200.0)})
+	s.ErrorIs(err, apperr.ErrValidation)
+}

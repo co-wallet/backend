@@ -59,7 +59,11 @@ func (r *TransactionRepository) createLocked(ctx context.Context, tx model.Trans
 	if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 		return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 	}
-	return tx, nil
+	loaded, err := r.populateAccounts(ctx, []model.Transaction{tx})
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	return loaded[0], nil
 }
 
 func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.Transaction, error) {
@@ -67,16 +71,13 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 	err := r.db.QueryRow(ctx, `
 		SELECT id, account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		       default_currency, default_currency_amount,
-		       category_id, description, date, created_by, created_at, updated_at,
-		       (SELECT name FROM accounts WHERE id = account_id),
-		       COALESCE((SELECT name FROM accounts WHERE id = to_account_id), ''),
-		       COALESCE((SELECT currency FROM accounts WHERE id = to_account_id), '')
+		       category_id, description, date, created_by, created_at, updated_at
 		FROM transactions WHERE id = $1`, id,
 	).Scan(
 		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 		&tx.CategoryID, &tx.Description, &tx.Date, &tx.CreatedBy,
-		&tx.CreatedAt, &tx.UpdatedAt, &tx.AccountName, &tx.ToAccountName, &tx.ToCurrency,
+		&tx.CreatedAt, &tx.UpdatedAt,
 	)
 	if isNoRows(err) {
 		return model.Transaction{}, fmt.Errorf("transaction %s: %w", id, apperr.ErrNotFound)
@@ -85,7 +86,14 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 		return model.Transaction{}, err
 	}
 	tx.Shares, err = r.listShares(ctx, id)
-	return tx, err
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	loaded, err := r.populateAccounts(ctx, []model.Transaction{tx})
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	return loaded[0], nil
 }
 
 func (r *TransactionRepository) List(ctx context.Context, userID string, f model.TransactionFilter) ([]model.Transaction, error) {
@@ -95,7 +103,6 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		       t.exchange_rate, t.default_currency, t.default_currency_amount,
 		       t.category_id, t.description, t.date,
 		       t.created_by, t.created_at, t.updated_at,
-		       a.name, COALESCE(a2.name, ''), COALESCE(a2.currency, ''),
 		       NOT (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1))
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
@@ -173,7 +180,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 			&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency,
 			&tx.ExchangeRate, &tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 			&tx.CategoryID, &tx.Description, &tx.Date,
-			&tx.CreatedBy, &tx.CreatedAt, &tx.UpdatedAt, &tx.AccountName, &tx.ToAccountName, &tx.ToCurrency, &tx.ReadOnly,
+			&tx.CreatedBy, &tx.CreatedAt, &tx.UpdatedAt, &tx.ReadOnly,
 		); err != nil {
 			return nil, err
 		}
@@ -196,7 +203,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 			txs[i].Shares = sharesByTx[txs[i].ID]
 		}
 	}
-	return txs, nil
+	return r.populateAccounts(ctx, txs)
 }
 
 func (r *TransactionRepository) Update(ctx context.Context, tx model.Transaction) (model.Transaction, error) {
@@ -241,7 +248,14 @@ func (r *TransactionRepository) updateLocked(ctx context.Context, tx model.Trans
 		}
 	}
 	tx.Shares, err = r.listShares(ctx, tx.ID)
-	return tx, err
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	loaded, err := r.populateAccounts(ctx, []model.Transaction{tx})
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	return loaded[0], nil
 }
 
 func (r *TransactionRepository) Delete(ctx context.Context, id string) error {

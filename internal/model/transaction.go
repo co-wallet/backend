@@ -15,9 +15,8 @@ func (t TransactionType) IsValid() bool {
 }
 
 type Transaction struct {
-	AccountName           string
-	ToAccountName         string
-	ToCurrency            string
+	Account               Account
+	AccountTo             *Account // nil for transactions without a destination
 	ReadOnly              bool
 	ID                    string
 	AccountID             string

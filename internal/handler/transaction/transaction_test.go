@@ -2,6 +2,7 @@ package transactionhandler_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/co-wallet/backend/internal/handler/transaction/mocks"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 )
 
 type TransactionHandlerSuite struct {
@@ -215,4 +217,38 @@ func (s *TransactionHandlerSuite) TestUpdate_IgnoresLegacyBalanceFlag() {
 	s.h.Update(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
 	s.NotContains(rec.Body.String(), "includeInBalance")
+}
+
+func (s *TransactionHandlerSuite) TestGet_AccountRelationsOnlyExposePresentationFields() {
+	tx := model.Transaction{ID: "tx1", AccountID: "source", ToAccountID: ptr.To("destination"), ReadOnly: true,
+		Account:   model.Account{ID: "source", Name: "From", OwnerID: "private-owner", InitialBalance: 12345},
+		AccountTo: ptr.To(model.Account{ID: "destination", Name: "To", Currency: "EUR", OwnerID: "private-recipient", InitialBalance: 67890, Members: []model.AccountMember{{UserID: "private-member"}}}),
+	}
+	s.svc.EXPECT().GetByID(gomock.Any(), "reader", "tx1").Return(tx, nil)
+	rec := httptest.NewRecorder()
+	s.h.Get(rec, withUser(withTxIDParam(httptest.NewRequest(http.MethodGet, "/transactions/tx1", nil), "tx1"), "reader"))
+	s.Equal(http.StatusOK, rec.Code)
+	var body map[string]any
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	s.Equal("From", body["accountName"])
+	s.Equal("To", body["toAccountName"])
+	s.Equal("EUR", body["toCurrency"])
+	s.Equal(true, body["readOnly"])
+	for _, field := range []string{"account", "accountTo", "ownerId", "initialBalance", "members"} {
+		s.NotContains(body, field)
+	}
+	s.NotContains(rec.Body.String(), "private-")
+	s.NotContains(rec.Body.String(), "12345")
+	s.NotContains(rec.Body.String(), "67890")
+}
+func (s *TransactionHandlerSuite) TestGet_WithoutDestinationAccount() {
+	s.svc.EXPECT().GetByID(gomock.Any(), "reader", "tx1").Return(model.Transaction{ID: "tx1", Account: model.Account{Name: "Personal"}}, nil)
+	rec := httptest.NewRecorder()
+	s.h.Get(rec, withUser(withTxIDParam(httptest.NewRequest(http.MethodGet, "/transactions/tx1", nil), "tx1"), "reader"))
+	s.Equal(http.StatusOK, rec.Code)
+	var body map[string]any
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	s.Equal("Personal", body["accountName"])
+	s.Equal("", body["toAccountName"])
+	s.Equal("", body["toCurrency"])
 }

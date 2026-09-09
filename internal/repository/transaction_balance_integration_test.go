@@ -114,11 +114,16 @@ func TestAllTransactionsInBalance(t *testing.T) {
 	loaded, err := txs.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, 10.0, loaded.Amount)
+	require.Equal(t, personal, loaded.Account.ID)
+	require.Equal(t, "Personal", loaded.Account.Name)
+	require.Nil(t, loaded.AccountTo)
 	loaded.Amount = 15
 	loaded.Shares[0].Amount = 15
 	updated, err := txs.Update(ctx, loaded)
 	require.NoError(t, err)
 	require.Equal(t, 15.0, updated.Amount)
+	require.Equal(t, personal, updated.Account.ID)
+	require.Nil(t, updated.AccountTo)
 	summary, err = analytics.Summary(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, 655.0, summary.Balance)

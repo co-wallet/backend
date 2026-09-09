@@ -107,7 +107,7 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		if tx.Currency != source.Currency {
 			return model.Transaction{}, fmt.Errorf("source currency mismatch: %w", apperr.ErrValidation)
 		}
-		tx.AccountName, tx.ToAccountName, tx.ToCurrency = source.Name, destination.Name, destination.Currency
+		tx.Account, tx.AccountTo = source, &destination
 		if err := validateTransferAmount(tx); err != nil {
 			return model.Transaction{}, err
 		}
@@ -216,7 +216,7 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		existing.ToAmount = req.ToAmount
 	}
 	if existing.Type == model.TransactionTypeTransfer {
-		if req.Amount != nil && req.ToAmount == nil && existing.ToCurrency == existing.Currency {
+		if req.Amount != nil && req.ToAmount == nil && existing.AccountTo != nil && existing.AccountTo.Currency == existing.Currency {
 			existing.ToAmount = req.Amount
 		}
 		if err := validateTransferAmount(existing); err != nil {

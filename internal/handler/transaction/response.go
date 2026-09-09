@@ -50,9 +50,15 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 	for i, t := range tx.Tags {
 		tags[i] = TagResponse{ID: t.ID, Name: t.Name}
 	}
+	toAccountName, toCurrency := "", ""
+	if tx.AccountTo != nil {
+		toAccountName, toCurrency = tx.AccountTo.Name, tx.AccountTo.Currency
+	}
 	return TransactionResponse{
-		ID:          tx.ID,
-		AccountName: tx.AccountName, ToAccountName: tx.ToAccountName, ToCurrency: tx.ToCurrency,
+		ID:                    tx.ID,
+		AccountName:           tx.Account.Name,
+		ToAccountName:         toAccountName,
+		ToCurrency:            toCurrency,
 		ReadOnly:              tx.ReadOnly,
 		AccountID:             tx.AccountID,
 		ToAccountID:           tx.ToAccountID,
