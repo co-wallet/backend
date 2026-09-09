@@ -22,14 +22,16 @@ type TagStat struct {
 }
 
 type AnalyticsFilter struct {
-	UserID          string
-	DateFrom        time.Time
-	DateTo          time.Time
-	AccountIDs      []string
-	AccountKinds    []AccountKind
-	CategoryIDs     []string
-	TagIDs          []string
-	TagMode         string
-	DisplayCurrency string          // convert all amounts to this currency (default: USD)
-	TxType          TransactionType // "expense" (default) or "income"
+	IncludeTransferExpenses bool
+	IncludeTransferIncome   bool
+	UserID                  string
+	DateFrom                time.Time
+	DateTo                  time.Time
+	AccountIDs              []string
+	AccountKinds            []AccountKind
+	CategoryIDs             []string
+	TagIDs                  []string
+	TagMode                 string
+	DisplayCurrency         string          // convert all amounts to this currency (default: USD)
+	TxType                  TransactionType // "expense" (default) or "income"
 }

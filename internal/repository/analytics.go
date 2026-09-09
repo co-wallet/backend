@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -208,6 +209,18 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		return model.AnalyticsSummary{}, fmt.Errorf("period query: %w", err)
 	}
 
+	if f.IncludeTransferExpenses || f.IncludeTransferIncome {
+		outgoing, incoming, err := r.transferTotals(ctx, f)
+		if err != nil {
+			return model.AnalyticsSummary{}, err
+		}
+		if f.IncludeTransferExpenses {
+			expenses += outgoing
+		}
+		if f.IncludeTransferIncome {
+			income += incoming
+		}
+	}
 	return model.AnalyticsSummary{Balance: balance, Expenses: expenses, Income: income}, nil
 }
 
@@ -281,7 +294,31 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		}
 		result = append(result, s)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	includeTransfers := f.IncludeTransferExpenses
+	if f.TxType == model.TransactionTypeIncome {
+		includeTransfers = f.IncludeTransferIncome
+	}
+	if includeTransfers {
+		stats, err := r.transferStats(ctx, f)
+		if err != nil {
+			return nil, err
+		}
+		for _, stat := range stats {
+			amount, name := stat.Outgoing, "В '"+stat.AccountName+"'"
+			if f.TxType == model.TransactionTypeIncome {
+				amount, name = stat.Incoming, "Из '"+stat.AccountName+"'"
+			}
+			if amount != 0 {
+				result = append(result, model.CategoryStat{CategoryID: "transfers:" + stat.AccountID, CategoryName: name, Amount: amount})
+			}
+		}
+		sort.SliceStable(result, func(i, j int) bool { return result[i].Amount > result[j].Amount })
+	}
+	return result, nil
 }
 
 func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter) ([]model.TagStat, error) {

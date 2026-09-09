@@ -62,6 +62,8 @@ func (s *AnalyticsHandlerSuite) TestSummary_ExplicitCurrency() {
 		Summary(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
 			s.Equal("USD", f.DisplayCurrency)
+			s.False(f.IncludeTransferExpenses)
+			s.False(f.IncludeTransferIncome)
 			return model.AnalyticsSummary{}, nil
 		})
 
@@ -135,4 +137,25 @@ func (s *AnalyticsHandlerSuite) TestByTag_Success() {
 	s.h.ByTag(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
 	s.Contains(rec.Body.String(), `"lunch"`)
+}
+
+func (s *AnalyticsHandlerSuite) TestSummary_TransferFlags() {
+	s.svc.EXPECT().Summary(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
+		s.True(f.IncludeTransferExpenses)
+		s.True(f.IncludeTransferIncome)
+		return model.AnalyticsSummary{}, nil
+	})
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/analytics/summary?currency=USD&include_transfer_expenses=true&include_transfer_income=true", nil), "u1")
+	rec := httptest.NewRecorder()
+	s.h.Summary(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+}
+
+func (s *AnalyticsHandlerSuite) TestSummary_InvalidTransferFlags() {
+	for _, key := range []string{"include_transfer_expenses", "include_transfer_income"} {
+		req := withUser(httptest.NewRequest(http.MethodGet, "/analytics/summary?"+key+"=invalid", nil), "u1")
+		rec := httptest.NewRecorder()
+		s.h.Summary(rec, req)
+		s.Equal(http.StatusBadRequest, rec.Code)
+	}
 }
