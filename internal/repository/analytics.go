@@ -303,18 +303,20 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 		includeTransfers = f.IncludeTransferIncome
 	}
 	if includeTransfers {
-		outgoing, incoming, err := r.transferTotals(ctx, f)
+		stats, err := r.transferStats(ctx, f)
 		if err != nil {
 			return nil, err
 		}
-		amount := outgoing
-		if f.TxType == model.TransactionTypeIncome {
-			amount = incoming
+		for _, stat := range stats {
+			amount, name := stat.Outgoing, "На счёт «"+stat.AccountName+"»"
+			if f.TxType == model.TransactionTypeIncome {
+				amount, name = stat.Incoming, "Со счёта «"+stat.AccountName+"»"
+			}
+			if amount != 0 {
+				result = append(result, model.CategoryStat{CategoryID: "transfers:" + stat.AccountID, CategoryName: name, Amount: amount})
+			}
 		}
-		if amount != 0 {
-			result = append(result, model.CategoryStat{CategoryID: "transfers", CategoryName: "Переводы", Amount: amount})
-			sort.SliceStable(result, func(i, j int) bool { return result[i].Amount > result[j].Amount })
-		}
+		sort.SliceStable(result, func(i, j int) bool { return result[i].Amount > result[j].Amount })
 	}
 	return result, nil
 }

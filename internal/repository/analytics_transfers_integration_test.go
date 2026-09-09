@@ -114,7 +114,15 @@ func TestDashboardTransfers(t *testing.T) {
 				if category.amount == 0 {
 					require.Empty(t, stats)
 				} else {
-					require.Equal(t, []model.CategoryStat{{CategoryID: "transfers", CategoryName: "Переводы", Amount: category.amount}}, stats)
+					var total float64
+					ids := make(map[string]bool)
+					for _, stat := range stats {
+						total += stat.Amount
+						require.Contains(t, stat.CategoryID, "transfers:")
+						require.False(t, ids[stat.CategoryID])
+						ids[stat.CategoryID] = true
+					}
+					require.Equal(t, category.amount, total)
 				}
 			}
 			for _, flags := range []struct{ expense, income bool }{{false, false}, {true, false}, {false, true}} {
@@ -137,6 +145,22 @@ func TestDashboardTransfers(t *testing.T) {
 		})
 	}
 	f := base
+	f.AccountIDs = []string{spending}
+	f.TxType = model.TransactionTypeExpense
+	groups, err := analytics.ByCategory(ctx, f)
+	require.NoError(t, err)
+	require.Equal(t, []model.CategoryStat{
+		{CategoryID: "transfers:" + deposit, CategoryName: "На счёт «Deposit»", Amount: 30},
+		{CategoryID: "transfers:" + external, CategoryName: "На счёт «External»", Amount: 4},
+	}, groups)
+	f.TxType = model.TransactionTypeIncome
+	groups, err = analytics.ByCategory(ctx, f)
+	require.NoError(t, err)
+	require.Equal(t, []model.CategoryStat{
+		{CategoryID: "transfers:" + external, CategoryName: "Со счёта «External»", Amount: 30},
+		{CategoryID: "transfers:" + deposit, CategoryName: "Со счёта «Deposit»", Amount: 25},
+	}, groups)
+	f = base
 	f.AccountIDs = []string{spending}
 	f.TagIDs = []string{tag}
 	filtered, err := analytics.Summary(ctx, f)
@@ -161,4 +185,16 @@ func TestDashboardTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 34.0, filtered.Expenses)
 	require.Equal(t, 55.0, filtered.Income)
+	createTransfer(spending, external, user, "USD", 10, 10, 4, today, false)
+	exec(`UPDATE accounts SET name='Deposit' WHERE id=$1`, external)
+	f = base
+	f.AccountIDs = []string{spending}
+	f.TxType = model.TransactionTypeExpense
+	groups, err = analytics.ByCategory(ctx, f)
+	require.NoError(t, err)
+	require.Equal(t, []model.CategoryStat{
+		{CategoryID: "transfers:" + deposit, CategoryName: "На счёт «Deposit»", Amount: 30},
+		{CategoryID: "transfers:" + external, CategoryName: "На счёт «Deposit»", Amount: 8},
+	}, groups)
+
 }
