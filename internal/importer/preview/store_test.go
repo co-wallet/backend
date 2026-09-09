@@ -61,5 +61,57 @@ func TestExpirationAndQuota(t *testing.T) {
 		require.NoError(t, s.Save(p))
 	}
 	p.ID = uuid.NewString()
-	require.ErrorIs(t, s.Save(p), apperr.ErrConflict)
+	require.NoError(t, s.Save(p))
+	_, err = s.Load(p.UserID, p.ID)
+	require.NoError(t, err)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 5)
+}
+
+func TestRepeatedPreviewKeepsLatestAndOtherUsers(t *testing.T) {
+	dir := t.TempDir()
+	s, err := preview.New(dir)
+	require.NoError(t, err)
+	other := model.ImportPreview{ID: uuid.NewString(), UserID: uuid.NewString(), ExpiresAt: time.Now().Add(preview.TTL)}
+	require.NoError(t, s.Save(other))
+	p := model.ImportPreview{UserID: uuid.NewString(), ExpiresAt: time.Now().Add(preview.TTL)}
+	oldest := ""
+	for i := range 20 {
+		p.ID = uuid.NewString()
+		if i == 0 {
+			oldest = p.ID
+		}
+		require.NoError(t, s.Save(p))
+		_, err = s.Load(p.UserID, p.ID)
+		require.NoError(t, err)
+		// Give snapshots distinct ages without sleeping; keep the same source expiration.
+		stamp := time.Now().Add(time.Duration(i-20) * time.Minute)
+		require.NoError(t, os.Chtimes(filepath.Join(dir, p.UserID+"_"+p.ID+".json"), stamp, stamp))
+	}
+	_, err = s.Load(other.UserID, other.ID)
+	require.NoError(t, err)
+	_, err = s.Load(p.UserID, oldest)
+	require.ErrorIs(t, err, apperr.ErrNotFound)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 6)
+}
+
+func TestGlobalCapacityDoesNotEvictOtherUsers(t *testing.T) {
+	dir := t.TempDir()
+	s, err := preview.New(dir)
+	require.NoError(t, err)
+	// A sparse file occupies the quota without allocating hundreds of MB in the test.
+	otherPath := filepath.Join(dir, uuid.NewString()+"_"+uuid.NewString()+".json")
+	f, err := os.Create(otherPath)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(512<<20))
+	require.NoError(t, f.Close())
+	p := model.ImportPreview{ID: uuid.NewString(), UserID: uuid.NewString(), ExpiresAt: time.Now().Add(preview.TTL)}
+	require.ErrorIs(t, s.Save(p), preview.ErrCapacity)
+	_, err = os.Stat(otherPath)
+	require.NoError(t, err)
+	_, err = s.Load(p.UserID, p.ID)
+	require.ErrorIs(t, err, apperr.ErrNotFound)
 }
