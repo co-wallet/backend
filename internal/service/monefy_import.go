@@ -254,6 +254,9 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 	add(monefy.Warning, "icons", "", "", "Иконки Monefy не переносятся автоматически. Используются стандартные иконки co-wallet; для новых категорий можно выбрать иконку и оформление. Иконки существующих категорий сохраняются")
 	add(monefy.Warning, "flags", "", "", "Все счета станут личными и активными. IsIncludedInTotalBalance и disabled не переносятся: общий баланс определяется выбранным kind; история отключённых сущностей сохраняется")
 	if err = s.store.Save(p); err != nil {
+		if errors.Is(err, preview.ErrCapacity) {
+			return model.ImportPreview{}, importError("preview_storage_full", errors.Join(apperr.ErrConflict, err))
+		}
 		return model.ImportPreview{}, err
 	}
 	return p, nil

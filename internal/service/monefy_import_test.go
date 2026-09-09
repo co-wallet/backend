@@ -11,6 +11,7 @@ import (
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/importer/monefy"
+	"github.com/co-wallet/backend/internal/importer/preview"
 	"github.com/co-wallet/backend/internal/model"
 	"github.com/co-wallet/backend/internal/service/mocks"
 	"github.com/google/uuid"
@@ -215,4 +216,18 @@ func (s *ImportSuite) TestInvalidCategoryIcons() {
 			s.Equal("invalid_category_icons", typed.Code)
 		})
 	}
+}
+
+func (s *ImportSuite) TestPreviewStorageCapacityError() {
+	p := model.ImportPreview{}
+	s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(preview.ErrCapacity)
+	_, err := s.svc.Configure(context.Background(), s.user, s.id, nil, nil)
+	s.ErrorIs(err, apperr.ErrConflict)
+	s.ErrorIs(err, preview.ErrCapacity)
+	var typed *ImportError
+	s.Require().ErrorAs(err, &typed)
+	s.Equal("preview_storage_full", typed.Code)
 }

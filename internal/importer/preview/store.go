@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,9 @@ import (
 const TTL = 24 * time.Hour
 const MaxSnapshotBytes = 128 << 20
 const maxTotalBytes = 512 << 20
+const maxUserSnapshots = 5
+
+var ErrCapacity = errors.New("preview storage capacity exceeded")
 
 type Store struct {
 	dir string
@@ -70,20 +74,37 @@ func (s *Store) Save(p model.ImportPreview) error {
 	if err != nil {
 		return err
 	}
+	type candidate struct {
+		name     string
+		size     int64
+		modified time.Time
+	}
 	var size int64
-	count := 0
+	var own []candidate
 	for _, entry := range entries {
 		info, e := entry.Info()
 		if e != nil {
 			return e
 		}
 		size += info.Size()
-		if strings.HasPrefix(entry.Name(), p.UserID+"_") {
-			count++
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), p.UserID+"_") && strings.HasSuffix(entry.Name(), ".json") {
+			own = append(own, candidate{entry.Name(), info.Size(), info.ModTime()})
 		}
 	}
-	if count >= 5 || size+int64(len(data)) > maxTotalBytes {
-		return apperr.ErrConflict
+	sort.Slice(own, func(i, j int) bool {
+		if own[i].modified.Equal(own[j].modified) {
+			return own[i].name < own[j].name
+		}
+		return own[i].modified.Before(own[j].modified)
+	})
+	// Only this user's superseded previews may be evicted. Other users retain theirs.
+	remove := 0
+	for remove < len(own) && (len(own)-remove >= maxUserSnapshots || size+int64(len(data)) > maxTotalBytes) {
+		size -= own[remove].size
+		remove++
+	}
+	if size+int64(len(data)) > maxTotalBytes {
+		return ErrCapacity
 	}
 	f, err := os.CreateTemp(s.dir, ".pending-")
 	if err != nil {
@@ -94,6 +115,13 @@ func (s *Store) Save(p model.ImportPreview) error {
 	err = errors.Join(writeErr, f.Close())
 	if err != nil {
 		return err
+	}
+	// Stage the full file first: a failed write must not evict working previews.
+	// Temporary staging uses at most MaxSnapshotBytes beyond the completed-file quota.
+	for _, entry := range own[:remove] {
+		if err = os.Remove(filepath.Join(s.dir, entry.name)); err != nil {
+			return err
+		}
 	}
 	if err = os.Rename(f.Name(), path); err != nil {
 		return err
