@@ -82,7 +82,7 @@ func (f *importFixture) configured(t *testing.T) model.ImportPreview {
 	src, err := os.Open(f.source)
 	require.NoError(t, err)
 	defer src.Close() //nolint:errcheck
-	p, err := f.svc.Preview(context.Background(), f.user, src)
+	p, err := f.svc.Preview(context.Background(), f.user, src, model.ImportEmpty)
 	require.NoError(t, err)
 	p, err = f.svc.Configure(context.Background(), f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
@@ -100,14 +100,14 @@ func TestMonefyAtomicImportAndRepeat(t *testing.T) {
 	require.Empty(t, a.Reasons)
 	p := f.configured(t)
 	require.Equal(t, category, p.Categories[0].ExistingID)
-	_, err = f.svc.Confirm(ctx, f.other, p.ID, true)
+	_, err = f.svc.Confirm(ctx, f.other, p.ID, true, false)
 	require.ErrorIs(t, err, apperr.ErrNotFound)
 	var results [2]model.ImportResult
 	var errs [2]error
 	var wg sync.WaitGroup
 	for i := range 2 {
 		wg.Add(1)
-		go func() { defer wg.Done(); results[i], errs[i] = f.svc.Confirm(ctx, f.user, p.ID, false) }()
+		go func() { defer wg.Done(); results[i], errs[i] = f.svc.Confirm(ctx, f.user, p.ID, false, false) }()
 	}
 	wg.Wait()
 	require.NoError(t, errs[0])
@@ -143,7 +143,7 @@ func TestMonefyAtomicImportAndRepeat(t *testing.T) {
 	}
 	_, err = f.store.Load(f.user, p.ID)
 	require.ErrorIs(t, err, apperr.ErrNotFound)
-	result, err := f.svc.Confirm(ctx, f.user, p.ID, false)
+	result, err := f.svc.Confirm(ctx, f.user, p.ID, false, false)
 	require.NoError(t, err)
 	require.Equal(t, results[0], result)
 }
@@ -155,7 +155,7 @@ func TestMonefyRollback(t *testing.T) {
 	// Fail late, after accounts, categories and ordinary transactions were inserted.
 	_, err := f.pool.Exec(ctx, `ALTER TABLE transactions ADD CONSTRAINT reject_transfer CHECK(type<>'transfer')`)
 	require.NoError(t, err)
-	_, err = f.svc.Confirm(ctx, f.user, p.ID, false)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
 	require.Error(t, err)
 	var count int
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM accounts)+(SELECT count(*) FROM categories)+(SELECT count(*) FROM transactions)+(SELECT count(*) FROM transaction_shares)+(SELECT count(*) FROM account_members)+(SELECT count(*) FROM monefy_imports)`).Scan(&count))
@@ -164,7 +164,7 @@ func TestMonefyRollback(t *testing.T) {
 	require.NoError(t, err)
 	_, err = f.pool.Exec(ctx, `ALTER TABLE transactions DROP CONSTRAINT reject_transfer`)
 	require.NoError(t, err)
-	_, err = f.svc.Confirm(ctx, f.user, p.ID, false)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
 	require.NoError(t, err)
 }
 
@@ -178,21 +178,21 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	require.NoError(t, source.Close())
 	src, err := os.Open(f.source)
 	require.NoError(t, err)
-	p, err := f.svc.Preview(ctx, f.user, src)
+	p, err := f.svc.Preview(ctx, f.user, src, model.ImportEmpty)
 	require.NoError(t, err)
 	require.NoError(t, src.Close())
 	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, p.Report.Exclusions, 1)
-	_, err = f.svc.Confirm(ctx, f.user, p.ID, false)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
 	require.ErrorContains(t, err, "exclusions_not_confirmed")
 	_, err = f.pool.Exec(ctx, `INSERT INTO categories(user_id,name,type) VALUES($1,'Food','expense')`, f.other)
 	require.NoError(t, err)
-	_, err = f.svc.Confirm(ctx, f.user, p.ID, true)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, true, false)
 	require.ErrorContains(t, err, "catalog_changed")
 	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
 	require.NoError(t, err)
-	result, err := f.svc.Confirm(ctx, f.user, p.ID, true)
+	result, err := f.svc.Confirm(ctx, f.user, p.ID, true, false)
 	require.NoError(t, err)
 	require.Equal(t, 3, result.Transactions)
 	var count int
@@ -221,7 +221,7 @@ func TestMonefyEmptinessCannotBeHidden(t *testing.T) {
 			a, err := f.svc.Availability(ctx, f.user)
 			require.NoError(t, err)
 			require.NotEmpty(t, a.Reasons)
-			_, err = f.svc.Confirm(ctx, f.user, p.ID, false)
+			_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
 			require.ErrorContains(t, err, "account_not_empty")
 		})
 	}
@@ -267,7 +267,7 @@ func TestMonefyLocksOrdinaryWrites(t *testing.T) {
 			_, err = ordinary.Exec(ctx, query, args...)
 			require.NoError(t, err)
 			done := make(chan error, 1)
-			go func() { _, e := f.svc.Confirm(ctx, f.user, p.ID, false); done <- e }()
+			go func() { _, e := f.svc.Confirm(ctx, f.user, p.ID, false, false); done <- e }()
 			select {
 			case e := <-done:
 				t.Fatalf("confirm bypassed ordinary write: %v", e)
@@ -293,7 +293,7 @@ func TestMonefyCategoryIconsPersistOnImport(t *testing.T) {
 	category := p.Categories[0]
 	configured, err := f.svc.Configure(ctx, f.user, p.ID, kinds, map[string]string{category.SourceID: chosen}, map[string]string{"cash": "preset:wallet|pink|none"})
 	require.NoError(t, err)
-	_, err = f.svc.Confirm(ctx, f.user, configured.ID, true)
+	_, err = f.svc.Confirm(ctx, f.user, configured.ID, true, false)
 	require.NoError(t, err)
 	var icon string
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT icon FROM categories WHERE user_id=$1 AND name=$2`, f.user, category.Name).Scan(&icon))

@@ -53,7 +53,7 @@ func TestAvailabilityAndConfirmContract(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.JSONEq(t, `{"available":false,"reasons":["owned_accounts"]}`, w.Body.String())
-	svc.EXPECT().Confirm(gomock.Any(), "user", "id", true).Return(model.ImportResult{PreviewID: "id", Transactions: 2}, nil)
+	svc.EXPECT().Confirm(gomock.Any(), "user", "id", true, false).Return(model.ImportResult{PreviewID: "id", Transactions: 2}, nil)
 	req = httptest.NewRequest("POST", "/id/confirm", strings.NewReader(`{"acknowledge_exclusions":true}`)).WithContext(req.Context())
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)

@@ -21,9 +21,9 @@ import (
 //go:generate mockgen -source=handler.go -destination=mocks/mock_import_service.go -package=mocks
 type importService interface {
 	Availability(context.Context, string) (model.ImportAvailability, error)
-	Preview(context.Context, string, io.Reader) (model.ImportPreview, error)
+	Preview(context.Context, string, io.Reader, model.ImportMode) (model.ImportPreview, error)
 	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string, map[string]string) (model.ImportPreview, error)
-	Confirm(context.Context, string, string, bool) (model.ImportResult, error)
+	Confirm(context.Context, string, string, bool, bool) (model.ImportResult, error)
 }
 type Handler struct{ service importService }
 
@@ -53,7 +53,7 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, monefy.MaxFileBytes)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	p, err := h.service.Preview(ctx, middleware.UserIDFromCtx(ctx), r.Body)
+	p, err := h.service.Preview(ctx, middleware.UserIDFromCtx(ctx), r.Body, model.ImportMode(r.URL.Query().Get("mode")))
 	if ctx.Err() != nil {
 		respondError(w, ctx.Err())
 		return
@@ -71,6 +71,7 @@ type optionsRequest struct {
 	CategoryIcons map[string]string            `json:"category_icons"`
 }
 type confirmRequest struct {
+	AcknowledgeDeletion   bool `json:"acknowledge_deletion"`
 	AcknowledgeExclusions bool `json:"acknowledge_exclusions"`
 }
 
@@ -107,7 +108,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	result, err := h.service.Confirm(ctx, middleware.UserIDFromCtx(ctx), chi.URLParam(r, "previewID"), req.AcknowledgeExclusions)
+	result, err := h.service.Confirm(ctx, middleware.UserIDFromCtx(ctx), chi.URLParam(r, "previewID"), req.AcknowledgeExclusions, req.AcknowledgeDeletion)
 	if err != nil {
 		respondError(w, err)
 		return

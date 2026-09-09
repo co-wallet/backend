@@ -27,6 +27,9 @@ import (
 //go:generate mockgen -source=monefy_import.go -destination=mocks/mock_import.go -package=mocks
 type importRepo interface {
 	LockUser(context.Context, string) error
+	LockReplacement(context.Context) error
+	Replacement(context.Context, string) (model.ImportReplacement, error)
+	DeleteReplacement(context.Context, string) error
 	Availability(context.Context, string) (model.ImportAvailability, error)
 	Currencies(context.Context) ([]string, error)
 	Catalog(context.Context, bool) ([]model.Category, error)
@@ -84,7 +87,7 @@ func (s *ImportService) requireEmpty(ctx context.Context, r importRepo, user str
 	return nil
 }
 
-func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader) (model.ImportPreview, error) {
+func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader, mode model.ImportMode) (model.ImportPreview, error) {
 	select {
 	case importParseSlots <- struct{}{}:
 		defer func() { <-importParseSlots }()
@@ -94,8 +97,16 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader)
 	if _, err := uuid.Parse(user); err != nil {
 		return model.ImportPreview{}, apperr.ErrUnauthorized
 	}
-	if err := s.requireEmpty(ctx, s.repo, user); err != nil {
-		return model.ImportPreview{}, err
+	if mode == "" {
+		mode = model.ImportEmpty
+	}
+	if mode != model.ImportEmpty && mode != model.ImportReplace {
+		return model.ImportPreview{}, importError("invalid_import_mode", apperr.ErrValidation)
+	}
+	if mode == model.ImportEmpty {
+		if err := s.requireEmpty(ctx, s.repo, user); err != nil {
+			return model.ImportPreview{}, err
+		}
 	}
 	currencies, err := s.repo.Currencies(ctx)
 	if err != nil {
@@ -110,7 +121,7 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader)
 		}
 		return model.ImportPreview{}, err
 	}
-	p := model.ImportPreview{ID: uuid.NewString(), UserID: user, SHA256: hex.EncodeToString(hash.Sum(nil)), ExpiresAt: time.Now().UTC().Add(preview.TTL), Report: report}
+	p := model.ImportPreview{Mode: mode, ID: uuid.NewString(), UserID: user, SHA256: hex.EncodeToString(hash.Sum(nil)), ExpiresAt: time.Now().UTC().Add(preview.TTL), Report: report}
 	kinds := make(map[string]model.AccountKind, len(report.Accounts))
 	for _, account := range report.Accounts {
 		kinds[account.ID] = model.AccountKindSpending
@@ -125,8 +136,10 @@ func (s *ImportService) Configure(ctx context.Context, user, id string, kinds ma
 	if err != nil {
 		return p, err
 	}
-	if err = s.requireEmpty(ctx, s.repo, user); err != nil {
-		return model.ImportPreview{}, err
+	if p.Mode != model.ImportReplace {
+		if err = s.requireEmpty(ctx, s.repo, user); err != nil {
+			return model.ImportPreview{}, err
+		}
 	}
 	if len(kinds) != len(p.Report.Accounts) {
 		return model.ImportPreview{}, importError("invalid_account_kinds", apperr.ErrValidation)
@@ -181,6 +194,18 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 		}
 	}
 	p.Report.Diagnostics = diagnostics
+	if p.Mode == model.ImportReplace {
+		scope, err := s.repo.Replacement(ctx, p.UserID)
+		if err != nil {
+			return model.ImportPreview{}, err
+		}
+		p.Replacement = &scope
+		for _, code := range []string{"shared_accounts", "foreign_membership", "foreign_members", "external_transactions", "foreign_authors", "foreign_shares"} {
+			if scope.Blockers[code] > 0 {
+				p.Report.Diagnostics = append(p.Report.Diagnostics, monefy.Diagnostic{Severity: monefy.Blocking, Code: "target_replace_" + code, Message: replacementReason(code)})
+			}
+		}
+	}
 	// Clone maps so preparing a new snapshot never mutates an older one.
 	p.CategoryIcons = maps.Clone(p.CategoryIcons)
 	if p.CategoryIcons == nil {
@@ -334,7 +359,7 @@ func matchImportCategories(source []monefy.Category, catalog []model.Category) [
 	return out
 }
 
-func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledgeExclusions bool) (model.ImportResult, error) {
+func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledgeExclusions, acknowledgeDeletion bool) (model.ImportResult, error) {
 	if _, err := uuid.Parse(user); err != nil {
 		return model.ImportResult{}, apperr.ErrUnauthorized
 	}
@@ -369,7 +394,28 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 		if len(p.Report.Exclusions) > 0 && !acknowledgeExclusions {
 			return importError("exclusions_not_confirmed", apperr.ErrValidation)
 		}
-		if err = s.requireEmpty(ctx, r, user); err != nil {
+		if p.Mode == model.ImportReplace {
+			if !acknowledgeDeletion {
+				return importError("deletion_not_confirmed", apperr.ErrValidation)
+			}
+			if err = r.LockReplacement(ctx); err != nil {
+				return err
+			}
+			scope, err := r.Replacement(ctx, user)
+			if err != nil {
+				return err
+			}
+			// Compare canonical DB content, not time.Time internals changed by the
+			// preview's JSON round-trip (UTC versus a fixed-offset location).
+			if p.Replacement == nil || p.Replacement.Fingerprint == "" || p.Replacement.Fingerprint != scope.Fingerprint {
+				return importError("replacement_changed", apperr.ErrConflict)
+			}
+			for _, count := range scope.Blockers {
+				if count > 0 {
+					return importError("replacement_blocked", apperr.ErrConflict)
+				}
+			}
+		} else if err = s.requireEmpty(ctx, r, user); err != nil {
 			return err
 		}
 		catalog, err := r.Catalog(ctx, true)
@@ -392,6 +438,11 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 				return importError("preview_stale", apperr.ErrConflict)
 			}
 		}
+		if p.Mode == model.ImportReplace {
+			if err = r.DeleteReplacement(ctx, user); err != nil {
+				return err
+			}
+		}
 		result, err = r.Write(ctx, p)
 		return err
 	})
@@ -402,4 +453,23 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 	// TTL sweep retries deletion; receipt lookup makes all retries idempotent.
 	_ = s.store.Delete(user, id) // При сбое очистки TTL-процесс повторит удаление; импорт уже зафиксирован.
 	return result, nil
+}
+
+func replacementReason(code string) string {
+	switch code {
+	case "shared_accounts":
+		return "У вас есть общие счета, включая удалённые. Полная замена недоступна."
+	case "foreign_membership":
+		return "Вы участвуете в чужих счетах. Полная замена недоступна."
+	case "foreign_members":
+		return "В ваших счетах участвуют другие пользователи. Полная замена недоступна."
+	case "external_transactions":
+		return "Есть операции или переводы, связанные с чужими счетами. Полная замена недоступна."
+	case "foreign_authors":
+		return "В вашей истории есть операции других пользователей. Полная замена недоступна."
+	case "foreign_shares":
+		return "В вашей истории есть доли других пользователей. Полная замена недоступна."
+	default:
+		return "Есть внешние связи. Полная замена недоступна."
+	}
 }

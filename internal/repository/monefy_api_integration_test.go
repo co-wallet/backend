@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	accounthandler "github.com/co-wallet/backend/internal/handler/account"
@@ -57,7 +58,7 @@ func importRequest(t *testing.T, h http.Handler, token, method, path string, bod
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	if path == "/api/imports/monefy/preview" {
+	if strings.HasPrefix(path, "/api/imports/monefy/preview") {
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
 	w := httptest.NewRecorder()
@@ -336,4 +337,36 @@ func TestMonefyAPILocalReference(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, sha256.Sum256(csvSource) == sha256.Sum256(afterCSV), "CSV changed")
 	t.Log("verified API import: 17 accounts, 42 categories, 2557 operations, 273 transfers (10 FX), 13 nonzero opening balances, 1 acknowledged exclusion; exact per-account balances and per-currency totals match CSV; both sources unchanged")
+}
+
+func TestMonefyReplacementAPIContract(t *testing.T) {
+	f := newImportFixture(t)
+	a, tx := f.oldHistory(t)
+	h, token := f.api(t)
+	source, err := os.ReadFile(f.source)
+	require.NoError(t, err)
+	var p struct {
+		ID          string `json:"preview_id"`
+		Mode        string `json:"mode"`
+		CanConfirm  bool   `json:"can_confirm"`
+		Replacement struct {
+			Counts   map[string]int `json:"counts"`
+			Accounts []struct {
+				ID string `json:"id"`
+			} `json:"accounts"`
+		} `json:"replacement"`
+	}
+	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 409, nil)
+	importRequest(t, h, token, "POST", "/api/imports/monefy/preview?mode=invalid", source, 400, nil)
+	importRequest(t, h, token, "POST", "/api/imports/monefy/preview?mode=replace", source, 201, &p)
+	require.Equal(t, "replace", p.Mode)
+	require.True(t, p.CanConfirm)
+	require.Equal(t, 1, p.Replacement.Counts["deleted_accounts"])
+	require.Equal(t, a, p.Replacement.Accounts[0].ID)
+	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/confirm", []byte(`{"acknowledge_exclusions":true}`), 400, nil)
+	f.exists(t, a, tx)
+	var result, repeat map[string]any
+	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/confirm", []byte(`{"acknowledge_deletion":true}`), 200, &result)
+	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/confirm", []byte(`{}`), 200, &repeat)
+	require.Equal(t, result, repeat)
 }

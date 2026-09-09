@@ -40,7 +40,20 @@ type exclusionResponse struct {
 	SourceID string `json:"source_id"`
 	Reason   string `json:"reason"`
 }
+type replacementAccountResponse struct {
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Currency  string     `json:"currency"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+type replacementResponse struct {
+	Accounts []replacementAccountResponse `json:"accounts"`
+	Counts   map[string]int               `json:"counts"`
+	Blockers map[string]int               `json:"blockers"`
+}
 type previewResponse struct {
+	Mode                          model.ImportMode     `json:"mode"`
+	Replacement                   *replacementResponse `json:"replacement,omitempty"`
 	ID                            string               `json:"preview_id"`
 	SHA256                        string               `json:"sha256"`
 	ExpiresAt                     time.Time            `json:"expires_at"`
@@ -61,6 +74,16 @@ func toPreview(p model.ImportPreview) previewResponse {
 	r := previewResponse{ID: p.ID, SHA256: p.SHA256, ExpiresAt: p.ExpiresAt, CanConfirm: true, RequiresExclusionConfirmation: len(p.Report.Exclusions) > 0,
 		Counts: map[string]int{"accounts": len(p.Accounts), "categories": len(p.Categories), "transactions": len(p.Report.Transactions), "transfers": len(p.Report.Transfers)}, PeriodFrom: p.PeriodFrom, PeriodTo: p.PeriodTo,
 		Currencies: []string{}, Accounts: []accountResponse{}, Categories: []categoryResponse{}, Diagnostics: []diagnosticResponse{}, Exclusions: []exclusionResponse{}, Deleted: p.Report.Deleted}
+	r.Mode = p.Mode
+	if r.Mode == "" {
+		r.Mode = model.ImportEmpty
+	}
+	if p.Replacement != nil {
+		r.Replacement = &replacementResponse{Accounts: []replacementAccountResponse{}, Counts: p.Replacement.Counts, Blockers: p.Replacement.Blockers}
+		for _, a := range p.Replacement.Accounts {
+			r.Replacement.Accounts = append(r.Replacement.Accounts, replacementAccountResponse{a.ID, a.Name, a.Currency, a.DeletedAt})
+		}
+	}
 	seen := map[string]bool{}
 	for i, a := range p.Report.Accounts {
 		options := p.Accounts[i]
