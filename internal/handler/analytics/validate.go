@@ -3,6 +3,7 @@ package analytics
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,15 +16,17 @@ const dateLayout = "2006-01-02"
 
 // filterParams представляет валидированные query-параметры эндпоинтов аналитики.
 type filterParams struct {
-	DateFrom     time.Time
-	DateTo       time.Time
-	AccountIDs   []string
-	AccountKinds []model.AccountKind
-	CategoryIDs  []string
-	TagIDs       []string
-	TagMode      string
-	Currency     string
-	TxType       model.TransactionType
+	IncludeTransferExpenses bool
+	IncludeTransferIncome   bool
+	DateFrom                time.Time
+	DateTo                  time.Time
+	AccountIDs              []string
+	AccountKinds            []model.AccountKind
+	CategoryIDs             []string
+	TagIDs                  []string
+	TagMode                 string
+	Currency                string
+	TxType                  model.TransactionType
 }
 
 // parseFilterParams читает query, валидирует значения и возвращает
@@ -33,6 +36,19 @@ func parseFilterParams(q url.Values) (filterParams, error) {
 	p := filterParams{
 		AccountKinds: []model.AccountKind{model.AccountKindSpending},
 		TagMode:      "or",
+	}
+
+	for key, target := range map[string]*bool{
+		"include_transfer_expenses": &p.IncludeTransferExpenses,
+		"include_transfer_income":   &p.IncludeTransferIncome,
+	} {
+		if q.Has(key) {
+			value, err := strconv.ParseBool(q.Get(key))
+			if err != nil {
+				return filterParams{}, fmt.Errorf("%s must be a boolean", key)
+			}
+			*target = value
+		}
 	}
 
 	now := time.Now()
@@ -132,16 +148,18 @@ func (p filterParams) toFilter(userID, defaultCurrency string) model.AnalyticsFi
 		currency = defaultCurrency
 	}
 	return model.AnalyticsFilter{
-		UserID:          userID,
-		DateFrom:        p.DateFrom,
-		DateTo:          p.DateTo,
-		AccountIDs:      p.AccountIDs,
-		AccountKinds:    p.AccountKinds,
-		CategoryIDs:     p.CategoryIDs,
-		TagIDs:          p.TagIDs,
-		TagMode:         p.TagMode,
-		DisplayCurrency: currency,
-		TxType:          p.TxType,
+		UserID:                  userID,
+		IncludeTransferExpenses: p.IncludeTransferExpenses,
+		IncludeTransferIncome:   p.IncludeTransferIncome,
+		DateFrom:                p.DateFrom,
+		DateTo:                  p.DateTo,
+		AccountIDs:              p.AccountIDs,
+		AccountKinds:            p.AccountKinds,
+		CategoryIDs:             p.CategoryIDs,
+		TagIDs:                  p.TagIDs,
+		TagMode:                 p.TagMode,
+		DisplayCurrency:         currency,
+		TxType:                  p.TxType,
 	}
 }
 
