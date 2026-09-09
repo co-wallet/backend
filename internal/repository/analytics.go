@@ -308,9 +308,9 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 			return nil, err
 		}
 		for _, stat := range stats {
-			amount, name := stat.Outgoing, "На счёт «"+stat.AccountName+"»"
+			amount, name := stat.Outgoing, "В '"+stat.AccountName+"'"
 			if f.TxType == model.TransactionTypeIncome {
-				amount, name = stat.Incoming, "Со счёта «"+stat.AccountName+"»"
+				amount, name = stat.Incoming, "Из '"+stat.AccountName+"'"
 			}
 			if amount != 0 {
 				result = append(result, model.CategoryStat{CategoryID: "transfers:" + stat.AccountID, CategoryName: name, Amount: amount})

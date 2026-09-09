@@ -150,15 +150,15 @@ func TestDashboardTransfers(t *testing.T) {
 	groups, err := analytics.ByCategory(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
-		{CategoryID: "transfers:" + deposit, CategoryName: "На счёт «Deposit»", Amount: 30},
-		{CategoryID: "transfers:" + external, CategoryName: "На счёт «External»", Amount: 4},
+		{CategoryID: "transfers:" + deposit, CategoryName: "В 'Deposit'", Amount: 30},
+		{CategoryID: "transfers:" + external, CategoryName: "В 'External'", Amount: 4},
 	}, groups)
 	f.TxType = model.TransactionTypeIncome
 	groups, err = analytics.ByCategory(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
-		{CategoryID: "transfers:" + external, CategoryName: "Со счёта «External»", Amount: 30},
-		{CategoryID: "transfers:" + deposit, CategoryName: "Со счёта «Deposit»", Amount: 25},
+		{CategoryID: "transfers:" + external, CategoryName: "Из 'External'", Amount: 30},
+		{CategoryID: "transfers:" + deposit, CategoryName: "Из 'Deposit'", Amount: 25},
 	}, groups)
 	f = base
 	f.AccountIDs = []string{spending}
@@ -193,8 +193,8 @@ func TestDashboardTransfers(t *testing.T) {
 	groups, err = analytics.ByCategory(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
-		{CategoryID: "transfers:" + deposit, CategoryName: "На счёт «Deposit»", Amount: 30},
-		{CategoryID: "transfers:" + external, CategoryName: "На счёт «Deposit»", Amount: 8},
+		{CategoryID: "transfers:" + deposit, CategoryName: "В 'Deposit'", Amount: 30},
+		{CategoryID: "transfers:" + external, CategoryName: "В 'Deposit'", Amount: 8},
 	}, groups)
 
 }
