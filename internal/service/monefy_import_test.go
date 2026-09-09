@@ -37,16 +37,16 @@ func (s *ImportSuite) SetupTest() {
 	s.id = uuid.NewString()
 }
 func (s *ImportSuite) TestAccessAndNotEmptyBeforeParsing() {
-	_, err := s.svc.Preview(context.Background(), "", strings.NewReader(""))
+	_, err := s.svc.Preview(context.Background(), "", strings.NewReader(""), model.ImportEmpty)
 	s.ErrorIs(err, apperr.ErrUnauthorized)
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{Reasons: []string{"owned_accounts"}}, nil)
-	_, err = s.svc.Preview(context.Background(), s.user, strings.NewReader(""))
+	_, err = s.svc.Preview(context.Background(), s.user, strings.NewReader(""), model.ImportEmpty)
 	s.ErrorContains(err, "account_not_empty")
 }
 func (s *ImportSuite) TestMalformedFile() {
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB"}, nil)
-	_, err := s.svc.Preview(context.Background(), s.user, strings.NewReader("date,amount\n2024-01-01,12"))
+	_, err := s.svc.Preview(context.Background(), s.user, strings.NewReader("date,amount\n2024-01-01,12"), model.ImportEmpty)
 	s.ErrorContains(err, "source_format")
 }
 func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
@@ -67,7 +67,7 @@ func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
 	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(nil)
-	p, err := s.svc.Preview(context.Background(), s.user, f)
+	p, err := s.svc.Preview(context.Background(), s.user, f, model.ImportEmpty)
 	s.Require().NoError(err)
 	s.Equal("-3728.391", p.Accounts[0].Balance)
 	s.True(strings.HasPrefix(p.Accounts[0].Icon, "preset:cash|"))
@@ -111,7 +111,7 @@ func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
 		s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
 		s.repo.EXPECT().Write(gomock.Any(), snapshot).Return(model.ImportResult{PreviewID: snapshot.ID}, nil)
 		s.store.EXPECT().Delete(s.user, snapshot.ID).Return(nil)
-		result, confirmErr := s.svc.Confirm(context.Background(), s.user, snapshot.ID, true)
+		result, confirmErr := s.svc.Confirm(context.Background(), s.user, snapshot.ID, true, false)
 		s.Require().NoError(confirmErr)
 		s.Equal(snapshot.ID, result.PreviewID)
 	}
@@ -130,19 +130,19 @@ func (s *ImportSuite) confirmStart(p model.ImportPreview) {
 }
 func (s *ImportSuite) TestConfirmBlocker() {
 	s.confirmStart(model.ImportPreview{Report: monefy.Report{Diagnostics: []monefy.Diagnostic{{Severity: monefy.Blocking}}}})
-	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, false)
 	s.ErrorContains(err, "preview_blocked")
 }
 func (s *ImportSuite) TestConfirmRequiresAcknowledgement() {
 	s.confirmStart(model.ImportPreview{Report: monefy.Report{Exclusions: []monefy.Exclusion{{ID: "removed"}}}})
-	_, err := s.svc.Confirm(context.Background(), s.user, s.id, false)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, false, false)
 	s.ErrorContains(err, "exclusions_not_confirmed")
 }
 func (s *ImportSuite) TestConfirmOtherUser() {
 	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
 	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(model.ImportResult{}, apperr.ErrNotFound)
 	s.store.EXPECT().Load(s.user, s.id).Return(model.ImportPreview{}, apperr.ErrNotFound)
-	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, false)
 	s.ErrorIs(err, apperr.ErrNotFound)
 }
 func (s *ImportSuite) TestRepeatUsesReceiptWithoutFile() {
@@ -150,7 +150,7 @@ func (s *ImportSuite) TestRepeatUsesReceiptWithoutFile() {
 	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
 	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(want, nil)
 	s.store.EXPECT().Delete(s.user, s.id).Return(nil)
-	got, err := s.svc.Confirm(context.Background(), s.user, s.id, false)
+	got, err := s.svc.Confirm(context.Background(), s.user, s.id, false, false)
 	s.NoError(err)
 	s.Equal(want, got)
 }
@@ -158,7 +158,7 @@ func (s *ImportSuite) TestCatalogChanged() {
 	s.confirmStart(model.ImportPreview{Categories: []model.ImportCategory{{SourceID: "c", Name: "Food", Type: "expense"}}, Report: monefy.Report{Categories: []monefy.Category{{ID: "c", Name: "Food", Type: "expense"}}}})
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), true).Return([]model.Category{{ID: "new", Name: "Food", Type: "expense"}}, nil)
-	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, false)
 	s.ErrorContains(err, "catalog_changed")
 }
 
@@ -306,7 +306,7 @@ func (s *ImportSuite) TestSemanticAppearanceOnFirstPreview() {
 	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(nil)
-	p, err := s.svc.Preview(context.Background(), s.user, f)
+	p, err := s.svc.Preview(context.Background(), s.user, f, model.ImportEmpty)
 	s.Require().NoError(err)
 	actual := map[string]string{}
 	for _, a := range p.Accounts {
@@ -357,7 +357,7 @@ func (s *ImportSuite) TestAccountAppearanceIsImmutableAndConfirmed() {
 	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB"}, nil)
 	s.repo.EXPECT().Write(gomock.Any(), again).Return(model.ImportResult{PreviewID: again.ID}, nil)
 	s.store.EXPECT().Delete(s.user, again.ID).Return(nil)
-	_, err = s.svc.Confirm(context.Background(), s.user, again.ID, true)
+	_, err = s.svc.Confirm(context.Background(), s.user, again.ID, true, false)
 	s.Require().NoError(err)
 }
 
@@ -377,4 +377,36 @@ func (s *ImportSuite) TestInvalidAccountIcons() {
 			s.Equal("invalid_account_icons", typed.Code)
 		})
 	}
+}
+
+func (s *ImportSuite) TestReplacementRequiresSeparateAcknowledgement() {
+	s.confirmStart(model.ImportPreview{Mode: model.ImportReplace})
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, false)
+	s.ErrorContains(err, "deletion_not_confirmed")
+}
+func (s *ImportSuite) TestReplacementRejectsMissingManifest() {
+	s.confirmStart(model.ImportPreview{Mode: model.ImportReplace})
+	s.repo.EXPECT().LockReplacement(gomock.Any()).Return(nil)
+	s.repo.EXPECT().Replacement(gomock.Any(), s.user).Return(model.ImportReplacement{}, nil)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, true)
+	s.ErrorContains(err, "replacement_changed")
+}
+func (s *ImportSuite) TestReplacementChecksBlockersEvenWithoutDiagnostics() {
+	scope := model.ImportReplacement{Fingerprint: "snapshot", Blockers: map[string]int{"foreign_shares": 1}}
+	s.confirmStart(model.ImportPreview{Mode: model.ImportReplace, Replacement: &scope})
+	s.repo.EXPECT().LockReplacement(gomock.Any()).Return(nil)
+	s.repo.EXPECT().Replacement(gomock.Any(), s.user).Return(scope, nil)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, true)
+	s.ErrorContains(err, "replacement_blocked")
+}
+func (s *ImportSuite) TestInvalidImportModeDoesNotParseOrDelete() {
+	_, err := s.svc.Preview(context.Background(), s.user, strings.NewReader(""), "typo")
+	s.ErrorContains(err, "invalid_import_mode")
+}
+func (s *ImportSuite) TestReplacementRejectsForeignPreview() {
+	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(model.ImportResult{}, apperr.ErrNotFound)
+	s.store.EXPECT().Load(s.user, s.id).Return(model.ImportPreview{}, apperr.ErrNotFound)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true, true)
+	s.ErrorIs(err, apperr.ErrNotFound)
 }

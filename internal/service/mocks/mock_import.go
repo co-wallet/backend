@@ -86,6 +86,34 @@ func (mr *MockimportRepoMockRecorder) Currencies(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Currencies", reflect.TypeOf((*MockimportRepo)(nil).Currencies), arg0)
 }
 
+// DeleteReplacement mocks base method.
+func (m *MockimportRepo) DeleteReplacement(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteReplacement", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteReplacement indicates an expected call of DeleteReplacement.
+func (mr *MockimportRepoMockRecorder) DeleteReplacement(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteReplacement", reflect.TypeOf((*MockimportRepo)(nil).DeleteReplacement), arg0, arg1)
+}
+
+// LockReplacement mocks base method.
+func (m *MockimportRepo) LockReplacement(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockReplacement", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockReplacement indicates an expected call of LockReplacement.
+func (mr *MockimportRepoMockRecorder) LockReplacement(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockReplacement", reflect.TypeOf((*MockimportRepo)(nil).LockReplacement), arg0)
+}
+
 // LockUser mocks base method.
 func (m *MockimportRepo) LockUser(arg0 context.Context, arg1 string) error {
 	m.ctrl.T.Helper()
@@ -113,6 +141,21 @@ func (m *MockimportRepo) Receipt(arg0 context.Context, arg1, arg2 string) (model
 func (mr *MockimportRepoMockRecorder) Receipt(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Receipt", reflect.TypeOf((*MockimportRepo)(nil).Receipt), arg0, arg1, arg2)
+}
+
+// Replacement mocks base method.
+func (m *MockimportRepo) Replacement(arg0 context.Context, arg1 string) (model.ImportReplacement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Replacement", arg0, arg1)
+	ret0, _ := ret[0].(model.ImportReplacement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Replacement indicates an expected call of Replacement.
+func (mr *MockimportRepoMockRecorder) Replacement(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Replacement", reflect.TypeOf((*MockimportRepo)(nil).Replacement), arg0, arg1)
 }
 
 // Write mocks base method.

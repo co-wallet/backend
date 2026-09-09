@@ -73,31 +73,31 @@ func (mr *MockimportServiceMockRecorder) Configure(arg0, arg1, arg2, arg3, arg4,
 }
 
 // Confirm mocks base method.
-func (m *MockimportService) Confirm(arg0 context.Context, arg1, arg2 string, arg3 bool) (model.ImportResult, error) {
+func (m *MockimportService) Confirm(arg0 context.Context, arg1, arg2 string, arg3, arg4 bool) (model.ImportResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Confirm", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "Confirm", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(model.ImportResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Confirm indicates an expected call of Confirm.
-func (mr *MockimportServiceMockRecorder) Confirm(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MockimportServiceMockRecorder) Confirm(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Confirm", reflect.TypeOf((*MockimportService)(nil).Confirm), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Confirm", reflect.TypeOf((*MockimportService)(nil).Confirm), arg0, arg1, arg2, arg3, arg4)
 }
 
 // Preview mocks base method.
-func (m *MockimportService) Preview(arg0 context.Context, arg1 string, arg2 io.Reader) (model.ImportPreview, error) {
+func (m *MockimportService) Preview(arg0 context.Context, arg1 string, arg2 io.Reader, arg3 model.ImportMode) (model.ImportPreview, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Preview", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "Preview", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(model.ImportPreview)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Preview indicates an expected call of Preview.
-func (mr *MockimportServiceMockRecorder) Preview(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockimportServiceMockRecorder) Preview(arg0, arg1, arg2, arg3 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Preview", reflect.TypeOf((*MockimportService)(nil).Preview), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Preview", reflect.TypeOf((*MockimportService)(nil).Preview), arg0, arg1, arg2, arg3)
 }
