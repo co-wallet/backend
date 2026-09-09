@@ -9,7 +9,6 @@ import (
 	"maps"
 	"math/big"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -121,7 +120,7 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader)
 
 // Configure creates a new immutable snapshot. Previously returned IDs keep their
 // original parameters, so confirmation cannot race with a mutable options form.
-func (s *ImportService) Configure(ctx context.Context, user, id string, kinds map[string]model.AccountKind, categoryIcons map[string]string) (model.ImportPreview, error) {
+func (s *ImportService) Configure(ctx context.Context, user, id string, kinds map[string]model.AccountKind, categoryIcons, accountIcons map[string]string) (model.ImportPreview, error) {
 	p, err := s.store.Load(user, id)
 	if err != nil {
 		return p, err
@@ -149,10 +148,20 @@ func (s *ImportService) Configure(ctx context.Context, user, id string, kinds ma
 				break
 			}
 		}
-		if !found || !importCategoryIconPattern.MatchString(icon) {
+		if !found || !validImportIcon(icon, importCategoryPresets) {
 			return model.ImportPreview{}, importError("invalid_category_icons", apperr.ErrValidation)
 		}
 		icons[sourceID] = icon
+	}
+	p.AccountIcons = maps.Clone(p.AccountIcons)
+	if p.AccountIcons == nil {
+		p.AccountIcons = map[string]string{}
+	}
+	for sourceID, icon := range accountIcons {
+		if _, found := kinds[sourceID]; !found || !validImportIcon(icon, importAccountPresets) {
+			return model.ImportPreview{}, importError("invalid_account_icons", apperr.ErrValidation)
+		}
+		p.AccountIcons[sourceID] = icon
 	}
 	p.CategoryIcons = icons
 	p.ID = uuid.NewString()
@@ -172,6 +181,26 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 		}
 	}
 	p.Report.Diagnostics = diagnostics
+	// Clone maps so preparing a new snapshot never mutates an older one.
+	p.CategoryIcons = maps.Clone(p.CategoryIcons)
+	if p.CategoryIcons == nil {
+		p.CategoryIcons = map[string]string{}
+	}
+	for _, c := range matchImportCategories(p.Report.Categories, catalog) {
+		if _, found := p.CategoryIcons[c.SourceID]; !found && c.ExistingID == "" {
+			p.CategoryIcons[c.SourceID] = suggestImportIcon(c.Name, c.Type)
+		}
+	}
+	p.AccountIcons = maps.Clone(p.AccountIcons)
+	if p.AccountIcons == nil {
+		p.AccountIcons = map[string]string{}
+	}
+	// Preserve appearance even for snapshots created before account options existed.
+	for _, a := range p.Accounts {
+		if _, found := p.AccountIcons[a.SourceID]; !found && a.Icon != "" {
+			p.AccountIcons[a.SourceID] = a.Icon
+		}
+	}
 	p.Accounts = []model.ImportAccount{}
 	p.Categories = importCategoriesWithIcons(p.Report.Categories, catalog, p.CategoryIcons)
 	add := func(severity monefy.Severity, code, entity, id, message string) {
@@ -193,7 +222,10 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 		if !kinds[a.ID].IsValid() {
 			add(monefy.Blocking, "account_kind", "Account", a.ID, "Выберите spending, deposit или investment")
 		}
-		p.Accounts = append(p.Accounts, model.ImportAccount{SourceID: a.ID, Kind: kinds[a.ID], Icon: "preset:debit-card"})
+		if _, found := p.AccountIcons[a.ID]; !found {
+			p.AccountIcons[a.ID] = suggestImportIcon(a.Name, "account")
+		}
+		p.Accounts = append(p.Accounts, model.ImportAccount{SourceID: a.ID, Kind: kinds[a.ID], Icon: p.AccountIcons[a.ID]})
 	}
 	seen := map[string]bool{}
 	for _, c := range p.Categories {
@@ -255,7 +287,7 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 	for i := range p.Accounts {
 		p.Accounts[i].Balance = new(big.Rat).SetFrac(balances[p.Accounts[i].SourceID], big.NewInt(1000)).FloatString(3)
 	}
-	add(monefy.Warning, "icons", "", "", "Иконки Monefy не переносятся автоматически. Используются стандартные иконки co-wallet; для новых категорий можно выбрать иконку и оформление. Иконки существующих категорий сохраняются")
+	add(monefy.Warning, "icons", "", "", "Иконки новых счетов и категорий подобраны по названию, цвета выбраны случайно из палитры co-wallet. Оформление можно изменить до подтверждения. Иконки общих категорий сохраняются; подбор выполняется локально на сервере")
 	add(monefy.Warning, "flags", "", "", "Все счета станут личными и активными. IsIncludedInTotalBalance и disabled не переносятся: общий баланс определяется выбранным kind; история отключённых сущностей сохраняется")
 	if err = s.store.Save(p); err != nil {
 		if errors.Is(err, preview.ErrCapacity) {
@@ -265,9 +297,6 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 	}
 	return p, nil
 }
-
-// Import accepts the preset format used by the shared category picker, never emoji.
-var importCategoryIconPattern = regexp.MustCompile(`^preset:[a-z0-9-]{1,64}(\|(blue|purple|pink|red|orange|green|yellow|graphite)\|(none|blue|purple|pink|red|orange|green|yellow|graphite))?$`)
 
 func importCategoriesWithIcons(source []monefy.Category, catalog []model.Category, icons map[string]string) []model.ImportCategory {
 	categories := matchImportCategories(source, catalog)

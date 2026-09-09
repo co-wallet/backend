@@ -15,6 +15,7 @@ type ImportPreview struct {
 	Accounts             []ImportAccount
 	Categories           []ImportCategory
 	CategoryIcons        map[string]string
+	AccountIcons         map[string]string
 	PeriodFrom, PeriodTo *time.Time
 }
 

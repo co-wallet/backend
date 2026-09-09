@@ -22,7 +22,7 @@ import (
 type importService interface {
 	Availability(context.Context, string) (model.ImportAvailability, error)
 	Preview(context.Context, string, io.Reader) (model.ImportPreview, error)
-	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string) (model.ImportPreview, error)
+	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string, map[string]string) (model.ImportPreview, error)
 	Confirm(context.Context, string, string, bool) (model.ImportResult, error)
 }
 type Handler struct{ service importService }
@@ -66,6 +66,7 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 type optionsRequest struct {
+	AccountIcons  map[string]string            `json:"account_icons"`
 	AccountKinds  map[string]model.AccountKind `json:"account_kinds"`
 	CategoryIcons map[string]string            `json:"category_icons"`
 }
@@ -91,7 +92,7 @@ func (h *Handler) Configure(w http.ResponseWriter, r *http.Request) {
 		respondError(w, err)
 		return
 	}
-	p, err := h.service.Configure(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "previewID"), req.AccountKinds, req.CategoryIcons)
+	p, err := h.service.Configure(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "previewID"), req.AccountKinds, req.CategoryIcons, req.AccountIcons)
 	if err != nil {
 		respondError(w, err)
 		return
