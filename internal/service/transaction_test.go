@@ -11,6 +11,7 @@ import (
 
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 	"github.com/co-wallet/backend/internal/service/mocks"
 )
 
@@ -500,4 +501,98 @@ func (s *TransactionServiceSuite) TestUpdate_DefaultCurrencyAmount_Updated() {
 
 	_, err := s.svc.Update(ctx, userID, txID, model.UpdateTransactionReq{DefaultCurrencyAmount: &newAmt})
 	s.NoError(err)
+}
+
+func (s *TransactionServiceSuite) TestCreate_TransferDestinations() {
+	for _, tc := range []struct {
+		name            string
+		enabled, member bool
+		currency        string
+		toAmount        *float64
+		want            error
+		sourceMode      model.AccountAccessMode
+		destinationMode model.AccountAccessMode
+	}{
+		{"external open", true, false, "EUR", ptr.To(90.0), nil, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"external hidden", false, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"own hidden", false, true, "USD", nil, nil, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"missing converted amount", true, false, "EUR", nil, apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"negative converted amount", true, false, "EUR", ptr.To(-2.0), apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"same currency mismatch", true, false, "USD", ptr.To(90.0), apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"shared external rejected", true, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModeShared, model.AccountAccessModePersonal},
+		{"shared own allowed", false, true, "USD", nil, nil, model.AccountAccessModeShared, model.AccountAccessModePersonal},
+		{"external shared destination rejected", true, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModePersonal, model.AccountAccessModeShared},
+		{"member shared destination allowed", false, true, "USD", nil, nil, model.AccountAccessModePersonal, model.AccountAccessModeShared},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			ctx := context.Background()
+			s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
+			s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{ID: "source", Currency: "USD", AccessMode: tc.sourceMode}, nil)
+			s.accountRepo.EXPECT().GetTransferDestination(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled, AccessMode: tc.destinationMode}, nil)
+			s.accountRepo.EXPECT().IsMember(ctx, "dest", "sender").Return(tc.member, nil)
+			if tc.want == nil {
+				s.repo.EXPECT().GetMemberDefaults(ctx, "source").Return(nil, nil)
+				s.repo.EXPECT().Create(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+					s.Equal(100.0, tx.Shares[0].Amount)
+					return tx, nil
+				})
+			}
+			_, err := s.svc.Create(ctx, "sender", model.CreateTransactionReq{AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", Date: time.Now(), ToAmount: tc.toAmount})
+			if tc.want == nil {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, tc.want)
+			}
+		})
+	}
+}
+func (s *TransactionServiceSuite) TestCreate_DeletedDestination() {
+	ctx := context.Background()
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
+	s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{Currency: "USD"}, nil)
+	s.accountRepo.EXPECT().GetTransferDestination(ctx, "gone").Return(model.Account{}, apperr.ErrNotFound)
+	_, err := s.svc.Create(ctx, "sender", model.CreateTransactionReq{AccountID: "source", ToAccountID: ptr.To("gone"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", Date: time.Now()})
+	s.ErrorIs(err, apperr.ErrNotFound)
+}
+func (s *TransactionServiceSuite) TestTransferRecipientCannotMutate() {
+	ctx := context.Background()
+	tx := model.Transaction{ID: "tx", AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer}
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(tx, nil).Times(2)
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "recipient").Return(false, nil).Times(2)
+	s.ErrorIs(s.svc.Delete(ctx, "recipient", "tx"), apperr.ErrForbidden)
+	_, err := s.svc.Update(ctx, "recipient", "tx", model.UpdateTransactionReq{Amount: ptr.To(1.0)})
+	s.ErrorIs(err, apperr.ErrForbidden)
+}
+func (s *TransactionServiceSuite) TestTransferRecipientPrivacy() {
+	ctx := context.Background()
+	tx := model.Transaction{ID: "tx", AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer,
+		Shares: []model.TransactionShare{{UserID: "sender", Amount: 100}}, ToAmount: ptr.To(90.0), CategoryID: ptr.To("private")}
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(tx, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "recipient").Return(false, nil).Times(2)
+	s.accountRepo.EXPECT().IsMember(ctx, "dest", "recipient").Return(true, nil)
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return([]model.Tag{{Name: "private"}}, nil)
+	result, err := s.svc.GetByID(ctx, "recipient", "tx")
+	s.NoError(err)
+	s.True(result.ReadOnly)
+	s.Empty(result.Shares)
+	s.Empty(result.Tags)
+	s.Nil(result.CategoryID)
+	s.Equal(90.0, *result.ToAmount)
+	tx.ReadOnly = true
+	s.repo.EXPECT().List(ctx, "recipient", gomock.Any()).Return([]model.Transaction{tx}, nil)
+	s.tagRepo.EXPECT().ListForTransactions(ctx, []string{"tx"}).Return(map[string][]model.Tag{"tx": {{Name: "private"}}}, nil)
+	listed, err := s.svc.List(ctx, "recipient", model.TransactionFilter{})
+	s.NoError(err)
+	s.Empty(listed[0].Shares)
+	s.Empty(listed[0].Tags)
+	s.Equal(90.0, *listed[0].ToAmount)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_TransferRequiresDestinationRelation() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "source", Type: model.TransactionTypeTransfer, Currency: "USD", Amount: 100}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
+	_, err := s.svc.Update(ctx, "sender", "tx", model.UpdateTransactionReq{Amount: ptr.To(200.0)})
+	s.ErrorIs(err, apperr.ErrValidation)
 }

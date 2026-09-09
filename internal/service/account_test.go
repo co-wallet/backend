@@ -309,3 +309,34 @@ func (s *AccountServiceSuite) TestUpdateMember_RefetchesMembers() {
 	s.Len(members, 1)
 	s.Equal(0.3, members[0].DefaultShare)
 }
+
+func (s *AccountServiceSuite) TestTransferAcceptanceOwnerOnly() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", OwnerID: "owner"}, nil)
+	_, err := s.svc.UpdateAccount(context.Background(), "member", "a", model.UpdateAccountReq{AcceptTransfers: ptr.To(true)})
+	s.ErrorIs(err, apperr.ErrForbidden)
+}
+func (s *AccountServiceSuite) TestTransferAcceptanceOwnerUpdate() {
+	s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", OwnerID: "owner"}, nil)
+	s.repo.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
+		s.True(a.AcceptTransfers)
+		return a, nil
+	})
+	_, err := s.svc.UpdateAccount(context.Background(), "owner", "a", model.UpdateAccountReq{AcceptTransfers: ptr.To(true)})
+	s.NoError(err)
+}
+func (s *AccountServiceSuite) TestTransferSearch() {
+	_, err := s.svc.ListTransferAccounts(context.Background(), " ")
+	s.ErrorIs(err, apperr.ErrValidation)
+	s.repo.EXPECT().ListTransferAccounts(gomock.Any(), "alice").Return([]model.TransferAccount{{ID: "open"}}, nil)
+	accounts, err := s.svc.ListTransferAccounts(context.Background(), " alice ")
+	s.NoError(err)
+	s.Len(accounts, 1)
+}
+
+func (s *AccountServiceSuite) TestSharedAccountCannotEnableExternalTransfers() {
+	_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: model.AccountAccessModeShared, AcceptTransfers: true})
+	s.ErrorIs(err, apperr.ErrValidation)
+	s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", OwnerID: "owner", AccessMode: model.AccountAccessModeShared}, nil)
+	_, err = s.svc.UpdateAccount(context.Background(), "owner", "a", model.UpdateAccountReq{AcceptTransfers: ptr.To(true)})
+	s.ErrorIs(err, apperr.ErrValidation)
+}

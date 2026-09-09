@@ -17,6 +17,7 @@ import (
 //go:generate mockgen -source=account.go -destination=mocks/mock_account_repo.go -package=mocks
 
 type accountRepo interface {
+	ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Account, error)
 	ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error)
 	GetByID(ctx context.Context, id string) (model.Account, error)
@@ -69,8 +70,12 @@ func (s *AccountService) GetByID(ctx context.Context, accountID string) (model.A
 }
 
 func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req model.CreateAccountReq) (model.Account, error) {
+	if req.AccessMode == model.AccountAccessModeShared && req.AcceptTransfers {
+		return model.Account{}, fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
+	}
 	a := model.Account{
 		OwnerID:            ownerID,
+		AcceptTransfers:    req.AcceptTransfers,
 		Name:               req.Name,
 		AccessMode:         req.AccessMode,
 		Kind:               req.Kind,
@@ -113,6 +118,13 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			return err
 		}
 
+		if req.AcceptTransfers != nil {
+			if requesterID != a.OwnerID {
+				return fmt.Errorf("only the owner can change transfer acceptance: %w", apperr.ErrForbidden)
+			}
+			a.AcceptTransfers = *req.AcceptTransfers
+		}
+
 		accessModeChanged := req.AccessMode != nil && *req.AccessMode != a.AccessMode
 		if accessModeChanged {
 			if requesterID != a.OwnerID {
@@ -126,6 +138,12 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			a.AccessMode = *req.AccessMode
 		}
 
+		if a.AccessMode == model.AccountAccessModeShared {
+			if req.AcceptTransfers != nil && *req.AcceptTransfers {
+				return fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
+			}
+			a.AcceptTransfers = false
+		}
 		if req.Name != nil {
 			a.Name = strings.TrimSpace(*req.Name)
 		}
@@ -248,4 +266,12 @@ func (s *AccountService) RemoveMember(ctx context.Context, requesterID, accountI
 
 func (s *AccountService) GetMembers(ctx context.Context, accountID string) ([]model.AccountMember, error) {
 	return s.accounts.GetMembers(ctx, accountID)
+}
+
+func (s *AccountService) ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error) {
+	username = strings.TrimSpace(username)
+	if username == "" || len(username) > 100 {
+		return nil, fmt.Errorf("username is required: %w", apperr.ErrValidation)
+	}
+	return s.accounts.ListTransferAccounts(ctx, username)
 }

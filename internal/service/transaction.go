@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 	"github.com/co-wallet/backend/internal/repository"
 )
@@ -22,21 +26,37 @@ type TransactionRepo interface {
 
 //go:generate mockgen -destination=mocks/mock_account_repo_tx.go -package=mocks github.com/co-wallet/backend/internal/service AccountRepoForTx
 type AccountRepoForTx interface {
+	GetTransferDestination(ctx context.Context, id string) (model.Account, error)
 	GetByID(ctx context.Context, id string) (model.Account, error)
 	IsMember(ctx context.Context, accountID, userID string) (bool, error)
 }
 
 type TransactionService struct {
+	withTx   func(context.Context, func(*TransactionService) error) error
 	repo     TransactionRepo
 	accounts AccountRepoForTx
 	tags     TagRepo
 }
 
-func NewTransactionService(repo *repository.TransactionRepository, accounts *repository.AccountRepository, tags *repository.TagRepository) *TransactionService {
-	return &TransactionService{repo: repo, accounts: accounts, tags: tags}
+func NewTransactionService(pool *pgxpool.Pool, repo *repository.TransactionRepository, accounts *repository.AccountRepository, tags *repository.TagRepository) *TransactionService {
+	return &TransactionService{repo: repo, accounts: accounts, tags: tags, withTx: func(ctx context.Context, fn func(*TransactionService) error) error {
+		return db.WithTx(ctx, pool, func(tx pgx.Tx) error {
+			return fn(&TransactionService{repo: repo.WithTx(tx), accounts: accounts.WithTx(tx), tags: tags.WithTx(tx)})
+		})
+	}}
 }
 
 func (s *TransactionService) Create(ctx context.Context, userID string, req model.CreateTransactionReq) (model.Transaction, error) {
+	if s.withTx != nil {
+		var result model.Transaction
+		err := s.withTx(ctx, func(scoped *TransactionService) error {
+			var err error
+			result, err = scoped.Create(ctx, userID, req)
+			return err
+		})
+		return result, err
+	}
+
 	if err := s.validateCreate(req); err != nil {
 		return model.Transaction{}, err
 	}
@@ -63,6 +83,34 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		Description:           req.Description,
 		Date:                  req.Date,
 		CreatedBy:             userID,
+	}
+
+	if tx.Type == model.TransactionTypeTransfer {
+		source, err := s.accounts.GetByID(ctx, tx.AccountID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		destination, err := s.accounts.GetTransferDestination(ctx, *tx.ToAccountID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		member, err := s.accounts.IsMember(ctx, destination.ID, userID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		if !member && (source.AccessMode == model.AccountAccessModeShared || destination.AccessMode == model.AccountAccessModeShared) {
+			return model.Transaction{}, fmt.Errorf("external transfers require personal source and destination accounts: %w", apperr.ErrForbidden)
+		}
+		if !member && !destination.AcceptTransfers {
+			return model.Transaction{}, fmt.Errorf("destination unavailable: %w", apperr.ErrForbidden)
+		}
+		if tx.Currency != source.Currency {
+			return model.Transaction{}, fmt.Errorf("source currency mismatch: %w", apperr.ErrValidation)
+		}
+		tx.Account, tx.AccountTo = source, &destination
+		if err := validateTransferAmount(tx); err != nil {
+			return model.Transaction{}, err
+		}
 	}
 
 	tx.Shares, err = s.resolveShares(ctx, req, userID)
@@ -93,7 +141,17 @@ func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (mo
 		return model.Transaction{}, err
 	}
 	tx.Tags, err = s.tags.ListForTransaction(ctx, id)
-	return tx, err
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	if tx.Type == model.TransactionTypeTransfer {
+		member, err := s.accounts.IsMember(ctx, tx.AccountID, userID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		tx.ReadOnly = !member
+	}
+	return transferView(tx), nil
 }
 
 func (s *TransactionService) List(ctx context.Context, userID string, f model.TransactionFilter) ([]model.Transaction, error) {
@@ -120,11 +178,22 @@ func (s *TransactionService) List(ctx context.Context, userID string, f model.Tr
 	}
 	for i := range txs {
 		txs[i].Tags = tagsByTx[txs[i].ID]
+		txs[i] = transferView(txs[i])
 	}
 	return txs, nil
 }
 
 func (s *TransactionService) Update(ctx context.Context, userID, id string, req model.UpdateTransactionReq) (model.Transaction, error) {
+	if s.withTx != nil {
+		var result model.Transaction
+		err := s.withTx(ctx, func(scoped *TransactionService) error {
+			var err error
+			result, err = scoped.Update(ctx, userID, id, req)
+			return err
+		})
+		return result, err
+	}
+
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return model.Transaction{}, err
@@ -138,13 +207,23 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 	}
 
 	if req.Amount != nil {
-		if *req.Amount <= 0 {
+		if *req.Amount <= 0 || math.IsNaN(*req.Amount) || math.IsInf(*req.Amount, 0) {
 			return model.Transaction{}, fmt.Errorf("amount must be positive: %w", apperr.ErrValidation)
 		}
 		existing.Amount = *req.Amount
 	}
 	if req.ToAmount != nil {
 		existing.ToAmount = req.ToAmount
+	}
+	if existing.Type == model.TransactionTypeTransfer {
+		if req.Amount != nil && req.ToAmount == nil && existing.AccountTo != nil && existing.AccountTo.Currency == existing.Currency {
+			existing.ToAmount = req.Amount
+		}
+		if err := validateTransferAmount(existing); err != nil {
+			return model.Transaction{}, err
+		}
+	} else if req.ToAmount != nil {
+		return model.Transaction{}, fmt.Errorf("to_amount requires a transfer: %w", apperr.ErrValidation)
 	}
 	if req.DefaultCurrency != nil {
 		existing.DefaultCurrency = req.DefaultCurrency
@@ -203,8 +282,12 @@ func (s *TransactionService) Delete(ctx context.Context, userID, id string) erro
 	if err != nil {
 		return err
 	}
-	if err = s.checkTransactionAccess(ctx, tx, userID); err != nil {
+	member, err := s.accounts.IsMember(ctx, tx.AccountID, userID)
+	if err != nil {
 		return err
+	}
+	if !member {
+		return fmt.Errorf("only source members can delete: %w", apperr.ErrForbidden)
 	}
 	return s.repo.Delete(ctx, id)
 }
@@ -233,7 +316,7 @@ func (s *TransactionService) validateCreate(req model.CreateTransactionReq) erro
 	if !req.Type.IsValid() {
 		return fmt.Errorf("invalid transaction type: %w", apperr.ErrValidation)
 	}
-	if req.Amount <= 0 {
+	if req.Amount <= 0 || math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) {
 		return fmt.Errorf("amount must be positive: %w", apperr.ErrValidation)
 	}
 	if len(req.Currency) != 3 {
@@ -244,6 +327,12 @@ func (s *TransactionService) validateCreate(req model.CreateTransactionReq) erro
 	}
 	if req.Type == model.TransactionTypeTransfer && req.ToAccountID == nil {
 		return fmt.Errorf("to_account_id is required for transfer: %w", apperr.ErrValidation)
+	}
+	if req.Type != model.TransactionTypeTransfer && (req.ToAccountID != nil || req.ToAmount != nil) {
+		return fmt.Errorf("destination requires a transfer: %w", apperr.ErrValidation)
+	}
+	if req.ToAccountID != nil && *req.ToAccountID == req.AccountID {
+		return fmt.Errorf("accounts must differ: %w", apperr.ErrValidation)
 	}
 	return nil
 }

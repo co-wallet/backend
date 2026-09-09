@@ -104,10 +104,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updateReq := model.UpdateAccountReq{
-		Name:           req.Name,
-		AccessMode:     req.AccessMode,
-		Icon:           req.Icon,
-		InitialBalance: req.InitialBalance,
+		Name:            req.Name,
+		AcceptTransfers: req.AcceptTransfers,
+		AccessMode:      req.AccessMode,
+		Icon:            req.Icon,
+		InitialBalance:  req.InitialBalance,
 	}
 	if req.InitialBalanceDate != nil {
 		t, _ := time.Parse("2006-01-02", *req.InitialBalanceDate)
@@ -130,4 +131,17 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) TransferAccounts(w http.ResponseWriter, r *http.Request) {
+	accounts, err := h.service.ListTransferAccounts(r.Context(), r.URL.Query().Get("username"))
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	result := make([]TransferAccountResponse, len(accounts))
+	for i, a := range accounts {
+		result[i] = TransferAccountResponse{ID: a.ID, Name: a.Name, Icon: a.Icon, Currency: a.Currency}
+	}
+	jsonResponse(w, result, http.StatusOK)
 }

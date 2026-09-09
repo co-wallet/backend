@@ -30,7 +30,7 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 	rows, err := r.db.Query(ctx, `
 		SELECT DISTINCT a.id, a.owner_id, a.name, a.access_mode, a.kind, a.currency, a.icon,
 		       a.initial_balance, a.initial_balance_date,
-		       a.created_at, a.updated_at
+		       a.created_at, a.updated_at, a.accept_transfers
 		FROM accounts a
 		LEFT JOIN account_members am ON am.account_id = a.id
 		WHERE a.deleted_at IS NULL
@@ -47,7 +47,7 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 		if err = rows.Scan(
 			&a.ID, &a.OwnerID, &a.Name, &a.AccessMode, &a.Kind, &a.Currency, &a.Icon,
 			&a.InitialBalance, &a.InitialBalanceDate,
-			&a.CreatedAt, &a.UpdatedAt,
+			&a.CreatedAt, &a.UpdatedAt, &a.AcceptTransfers,
 		); err != nil {
 			return nil, err
 		}
@@ -58,16 +58,25 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 
 // GetByID returns a non-deleted account by ID. Returns apperr.ErrNotFound if absent or deleted.
 func (r *AccountRepository) GetByID(ctx context.Context, id string) (model.Account, error) {
+	return r.getAccount(ctx, id, "")
+}
+
+// GetTransferDestination keeps acceptance stable until the transfer commits.
+func (r *AccountRepository) GetTransferDestination(ctx context.Context, id string) (model.Account, error) {
+	return r.getAccount(ctx, id, " FOR SHARE")
+}
+
+func (r *AccountRepository) getAccount(ctx context.Context, id, lock string) (model.Account, error) {
 	var a model.Account
 	err := r.db.QueryRow(ctx, `
 		SELECT id, owner_id, name, access_mode, kind, currency, icon,
 		       initial_balance, initial_balance_date,
-		       created_at, updated_at
-		FROM accounts WHERE id = $1 AND deleted_at IS NULL`, id,
+		       created_at, updated_at, accept_transfers
+		FROM accounts WHERE id = $1 AND deleted_at IS NULL`+lock, id,
 	).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.AccessMode, &a.Kind, &a.Currency, &a.Icon,
 		&a.InitialBalance, &a.InitialBalanceDate,
-		&a.CreatedAt, &a.UpdatedAt,
+		&a.CreatedAt, &a.UpdatedAt, &a.AcceptTransfers,
 	)
 	if err == pgx.ErrNoRows {
 		return model.Account{}, fmt.Errorf("account %s: %w", id, apperr.ErrNotFound)
@@ -78,11 +87,11 @@ func (r *AccountRepository) GetByID(ctx context.Context, id string) (model.Accou
 // Create inserts a new account and returns it with DB-generated fields populated.
 func (r *AccountRepository) Create(ctx context.Context, a model.Account) (model.Account, error) {
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO accounts (owner_id, name, access_mode, kind, currency, icon, initial_balance, initial_balance_date)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO accounts (owner_id, name, access_mode, kind, currency, icon, initial_balance, initial_balance_date, accept_transfers)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at, updated_at`,
 		a.OwnerID, a.Name, a.AccessMode, a.Kind, a.Currency, a.Icon,
-		a.InitialBalance, a.InitialBalanceDate,
+		a.InitialBalance, a.InitialBalanceDate, a.AcceptTransfers,
 	).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	return a, err
 }
@@ -93,10 +102,10 @@ func (r *AccountRepository) Update(ctx context.Context, a model.Account) (model.
 		UPDATE accounts
 		SET name = $1, access_mode = $2, icon = $3,
 		    initial_balance = $4, initial_balance_date = $5,
-		    updated_at = now()
+		    updated_at = now(), accept_transfers = $7
 		WHERE id = $6 AND deleted_at IS NULL
 		RETURNING updated_at`,
-		a.Name, a.AccessMode, a.Icon, a.InitialBalance, a.InitialBalanceDate, a.ID,
+		a.Name, a.AccessMode, a.Icon, a.InitialBalance, a.InitialBalanceDate, a.ID, a.AcceptTransfers,
 	).Scan(&a.UpdatedAt)
 	return a, err
 }
@@ -250,4 +259,24 @@ func (r *AccountRepository) IsMember(ctx context.Context, accountID, userID stri
 		)`, accountID, userID,
 	).Scan(&exists)
 	return exists, err
+}
+
+func (r *AccountRepository) ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error) {
+	rows, err := r.db.Query(ctx, `SELECT a.id, a.name, a.icon, a.currency
+		FROM accounts a JOIN users u ON u.id = a.owner_id
+		WHERE u.username = $1 AND a.accept_transfers AND a.access_mode = 'personal' AND a.deleted_at IS NULL
+		ORDER BY a.name, a.id`, username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []model.TransferAccount{}
+	for rows.Next() {
+		var a model.TransferAccount
+		if err := rows.Scan(&a.ID, &a.Name, &a.Icon, &a.Currency); err != nil {
+			return nil, err
+		}
+		result = append(result, a)
+	}
+	return result, rows.Err()
 }

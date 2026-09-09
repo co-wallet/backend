@@ -287,3 +287,11 @@ func (s *AccountHandlerSuite) TestRemoveMember_Success() {
 	s.h.RemoveMember(rec, req)
 	s.Equal(http.StatusNoContent, rec.Code)
 }
+
+func (s *AccountHandlerSuite) TestTransferAccounts_MinimalResponse() {
+	s.svc.EXPECT().ListTransferAccounts(gomock.Any(), "alice").Return([]model.TransferAccount{{ID: "a", Name: "Receiving", Currency: "EUR"}}, nil)
+	rec := httptest.NewRecorder()
+	s.h.TransferAccounts(rec, withUser(httptest.NewRequest(http.MethodGet, "/transfer-accounts?username=alice", nil), "sender"))
+	s.Equal(http.StatusOK, rec.Code)
+	s.JSONEq(`[{"id":"a","name":"Receiving","icon":null,"currency":"EUR"}]`, rec.Body.String())
+}

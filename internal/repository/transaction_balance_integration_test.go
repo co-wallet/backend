@@ -114,18 +114,23 @@ func TestAllTransactionsInBalance(t *testing.T) {
 	loaded, err := txs.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, 10.0, loaded.Amount)
+	require.Equal(t, personal, loaded.Account.ID)
+	require.Equal(t, "Personal", loaded.Account.Name)
+	require.Nil(t, loaded.AccountTo)
 	loaded.Amount = 15
 	loaded.Shares[0].Amount = 15
 	updated, err := txs.Update(ctx, loaded)
 	require.NoError(t, err)
 	require.Equal(t, 15.0, updated.Amount)
+	require.Equal(t, personal, updated.Account.ID)
+	require.Nil(t, updated.AccountTo)
 	summary, err = analytics.Summary(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, 655.0, summary.Balance)
 	require.Equal(t, 45.0, summary.Expenses)
 	require.NoError(t, txs.Delete(ctx, created.ID))
 	// A rollback restores a usable flag with all operations included.
-	require.NoError(t, goose.Down(sqlDB, "../../migrations"))
+	require.NoError(t, goose.DownTo(sqlDB, "../../migrations", 18))
 	var excluded int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM transactions WHERE NOT include_in_balance`).Scan(&excluded))
 	require.Zero(t, excluded)
