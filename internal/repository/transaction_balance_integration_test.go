@@ -125,7 +125,7 @@ func TestAllTransactionsInBalance(t *testing.T) {
 	require.Equal(t, 45.0, summary.Expenses)
 	require.NoError(t, txs.Delete(ctx, created.ID))
 	// A rollback restores a usable flag with all operations included.
-	require.NoError(t, goose.Down(sqlDB, "../../migrations"))
+	require.NoError(t, goose.DownTo(sqlDB, "../../migrations", 18))
 	var excluded int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM transactions WHERE NOT include_in_balance`).Scan(&excluded))
 	require.Zero(t, excluded)

@@ -9,6 +9,7 @@ import (
 )
 
 type createAccountReq struct {
+	AcceptTransfers    bool                    `json:"acceptTransfers"`
 	Name               string                  `json:"name"`
 	AccessMode         model.AccountAccessMode `json:"accessMode"`
 	Kind               model.AccountKind       `json:"kind"`
@@ -53,6 +54,7 @@ func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 	ibd, _ := time.Parse("2006-01-02", r.InitialBalanceDate)
 	return model.CreateAccountReq{
 		Name:               r.Name,
+		AcceptTransfers:    r.AcceptTransfers,
 		AccessMode:         r.AccessMode,
 		Kind:               r.Kind,
 		Currency:           r.Currency,
@@ -63,6 +65,7 @@ func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 }
 
 type updateAccountReq struct {
+	AcceptTransfers    *bool                    `json:"acceptTransfers"`
 	Name               *string                  `json:"name"`
 	AccessMode         *model.AccountAccessMode `json:"accessMode"`
 	Kind               *model.AccountKind       `json:"kind"`

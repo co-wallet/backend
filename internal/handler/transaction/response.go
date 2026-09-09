@@ -18,6 +18,11 @@ type TagResponse struct {
 }
 
 type TransactionResponse struct {
+	AccountName           string          `json:"accountName"`
+	ToAccountName         string          `json:"toAccountName"`
+	ToCurrency            string          `json:"toCurrency"`
+	ReadOnly              bool            `json:"readOnly"`
+	RecipientAmount       *float64        `json:"recipientAmount,omitempty"`
 	ID                    string          `json:"id"`
 	AccountID             string          `json:"accountId"`
 	ToAccountID           *string         `json:"toAccountId"`
@@ -47,7 +52,9 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 		tags[i] = TagResponse{ID: t.ID, Name: t.Name}
 	}
 	return TransactionResponse{
-		ID:                    tx.ID,
+		ID:          tx.ID,
+		AccountName: tx.AccountName, ToAccountName: tx.ToAccountName, ToCurrency: tx.ToCurrency,
+		ReadOnly: tx.ReadOnly, RecipientAmount: tx.RecipientAmount,
 		AccountID:             tx.AccountID,
 		ToAccountID:           tx.ToAccountID,
 		ToAmount:              tx.ToAmount,

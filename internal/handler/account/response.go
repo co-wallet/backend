@@ -15,6 +15,7 @@ type BalanceResponse struct {
 }
 
 type AccountResponse struct {
+	AcceptTransfers    bool             `json:"acceptTransfers"`
 	ID                 string           `json:"id"`
 	OwnerID            string           `json:"ownerId"`
 	Name               string           `json:"name"`
@@ -38,6 +39,7 @@ type MemberResponse struct {
 func toAccountResponse(a model.Account) AccountResponse {
 	return AccountResponse{
 		ID:                 a.ID,
+		AcceptTransfers:    a.AcceptTransfers,
 		OwnerID:            a.OwnerID,
 		Name:               a.Name,
 		AccessMode:         string(a.AccessMode),
@@ -70,4 +72,11 @@ func toMemberResponses(members []model.AccountMember) []MemberResponse {
 		out[i] = toMemberResponse(m)
 	}
 	return out
+}
+
+type TransferAccountResponse struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Icon     *string `json:"icon"`
+	Currency string  `json:"currency"`
 }

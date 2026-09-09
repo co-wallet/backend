@@ -93,6 +93,7 @@ func newRouter(
 				r.Delete("/", categoryHandler.Delete)
 			})
 
+			r.Get("/transfer-accounts", accountHandler.TransferAccounts)
 			r.Get("/accounts", accountHandler.List)
 			r.Post("/accounts", accountHandler.Create)
 			r.Route("/accounts/{accountID}", func(r chi.Router) {

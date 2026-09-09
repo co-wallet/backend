@@ -59,6 +59,9 @@ func (r *TransactionRepository) createLocked(ctx context.Context, tx model.Trans
 	if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 		return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 	}
+	if err = r.saveTransferShares(ctx, tx); err != nil {
+		return model.Transaction{}, err
+	}
 	return tx, nil
 }
 
@@ -67,13 +70,16 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 	err := r.db.QueryRow(ctx, `
 		SELECT id, account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		       default_currency, default_currency_amount,
-		       category_id, description, date, created_by, created_at, updated_at
+		       category_id, description, date, created_by, created_at, updated_at,
+		       (SELECT name FROM accounts WHERE id = account_id),
+		       COALESCE((SELECT name FROM accounts WHERE id = to_account_id), ''),
+		       COALESCE((SELECT currency FROM accounts WHERE id = to_account_id), '')
 		FROM transactions WHERE id = $1`, id,
 	).Scan(
 		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 		&tx.CategoryID, &tx.Description, &tx.Date, &tx.CreatedBy,
-		&tx.CreatedAt, &tx.UpdatedAt,
+		&tx.CreatedAt, &tx.UpdatedAt, &tx.AccountName, &tx.ToAccountName, &tx.ToCurrency,
 	)
 	if isNoRows(err) {
 		return model.Transaction{}, fmt.Errorf("transaction %s: %w", id, apperr.ErrNotFound)
@@ -82,6 +88,11 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 		return model.Transaction{}, err
 	}
 	tx.Shares, err = r.listShares(ctx, id)
+	if err != nil {
+		return model.Transaction{}, err
+	}
+	incoming, err := r.listTransferShares(ctx, []string{id})
+	tx.ToShares = incoming[id]
 	return tx, err
 }
 
@@ -91,7 +102,9 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		SELECT DISTINCT t.id, t.account_id, t.to_account_id, t.to_amount, t.type, t.amount, t.currency,
 		       t.exchange_rate, t.default_currency, t.default_currency_amount,
 		       t.category_id, t.description, t.date,
-		       t.created_by, t.created_at, t.updated_at
+		       t.created_by, t.created_at, t.updated_at,
+		       a.name, COALESCE(a2.name, ''), COALESCE(a2.currency, ''),
+		       NOT (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1))
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
 		LEFT JOIN accounts a2 ON a2.id = t.to_account_id
@@ -109,6 +122,9 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		q += fmt.Sprintf(" AND (t.account_id = ANY($%d) OR t.to_account_id = ANY($%d))", n, n)
 		args = append(args, f.AccountIDs)
 		n++
+	}
+	if len(f.CategoryIDs) > 0 || len(f.TagIDs) > 0 {
+		q += ` AND (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1))`
 	}
 	if len(f.CategoryIDs) > 0 {
 		q += fmt.Sprintf(" AND t.category_id = ANY($%d)", n)
@@ -165,7 +181,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 			&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency,
 			&tx.ExchangeRate, &tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
 			&tx.CategoryID, &tx.Description, &tx.Date,
-			&tx.CreatedBy, &tx.CreatedAt, &tx.UpdatedAt,
+			&tx.CreatedBy, &tx.CreatedAt, &tx.UpdatedAt, &tx.AccountName, &tx.ToAccountName, &tx.ToCurrency, &tx.ReadOnly,
 		); err != nil {
 			return nil, err
 		}
@@ -184,8 +200,13 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		if err != nil {
 			return nil, err
 		}
+		incoming, err := r.listTransferShares(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
 		for i := range txs {
 			txs[i].Shares = sharesByTx[txs[i].ID]
+			txs[i].ToShares = incoming[txs[i].ID]
 		}
 	}
 	return txs, nil
@@ -231,6 +252,9 @@ func (r *TransactionRepository) updateLocked(ctx context.Context, tx model.Trans
 		if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 			return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 		}
+	}
+	if err = r.saveTransferShares(ctx, tx); err != nil {
+		return model.Transaction{}, err
 	}
 	tx.Shares, err = r.listShares(ctx, tx.ID)
 	return tx, err
@@ -331,4 +355,35 @@ func (r *TransactionRepository) listShares(ctx context.Context, txID string) ([]
 
 func isNoRows(err error) bool {
 	return errors.Is(err, pgx.ErrNoRows)
+}
+
+func (r *TransactionRepository) saveTransferShares(ctx context.Context, tx model.Transaction) error {
+	if tx.Type != model.TransactionTypeTransfer {
+		return nil
+	}
+	if _, err := r.db.Exec(ctx, `DELETE FROM transfer_shares WHERE transaction_id = $1`, tx.ID); err != nil {
+		return err
+	}
+	for _, share := range tx.ToShares {
+		if _, err := r.db.Exec(ctx, `INSERT INTO transfer_shares (transaction_id, user_id, amount) VALUES ($1,$2,$3)`, tx.ID, share.UserID, share.Amount); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (r *TransactionRepository) listTransferShares(ctx context.Context, ids []string) (map[string][]model.TransactionShare, error) {
+	rows, err := r.db.Query(ctx, `SELECT transaction_id, user_id, amount FROM transfer_shares WHERE transaction_id = ANY($1) ORDER BY user_id`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string][]model.TransactionShare)
+	for rows.Next() {
+		var share model.TransactionShare
+		if err := rows.Scan(&share.TransactionID, &share.UserID, &share.Amount); err != nil {
+			return nil, err
+		}
+		result[share.TransactionID] = append(result[share.TransactionID], share)
+	}
+	return result, rows.Err()
 }

@@ -66,7 +66,7 @@ func main() {
 	accountSvc := service.NewAccountService(pool, accountRepo, userRepo)
 	categorySvc := service.NewCategoryService(categoryRepo)
 	tagSvc := service.NewTagService(tagRepo)
-	transactionSvc := service.NewTransactionService(transactionRepo, accountRepo, tagRepo)
+	transactionSvc := service.NewTransactionService(pool, transactionRepo, accountRepo, tagRepo)
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 	currencySvc := service.NewCurrencyService(currencyRepo)
 	adminSvc := service.NewAdminService(adminRepo, currencySvc)

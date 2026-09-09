@@ -15,6 +15,12 @@ func (t TransactionType) IsValid() bool {
 }
 
 type Transaction struct {
+	AccountName           string
+	ToAccountName         string
+	ToCurrency            string
+	ReadOnly              bool
+	RecipientAmount       *float64
+	ToShares              []TransactionShare
 	ID                    string
 	AccountID             string
 	ToAccountID           *string

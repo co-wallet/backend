@@ -26,6 +26,7 @@ func (k AccountKind) IsValid() bool {
 }
 
 type Account struct {
+	AcceptTransfers    bool
 	ID                 string
 	OwnerID            string
 	Name               string
@@ -62,6 +63,7 @@ type AccountBalance struct {
 // Service-level DTOs
 
 type CreateAccountReq struct {
+	AcceptTransfers    bool
 	Name               string
 	AccessMode         AccountAccessMode
 	Kind               AccountKind
@@ -72,9 +74,18 @@ type CreateAccountReq struct {
 }
 
 type UpdateAccountReq struct {
+	AcceptTransfers    *bool
 	Name               *string
 	AccessMode         *AccountAccessMode
 	Icon               *string
 	InitialBalance     *float64
 	InitialBalanceDate *time.Time // nil = don't update
+}
+
+// TransferAccount contains only the information needed to choose a destination.
+type TransferAccount struct {
+	ID       string
+	Name     string
+	Icon     *string
+	Currency string
 }

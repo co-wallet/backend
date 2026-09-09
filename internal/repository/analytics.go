@@ -140,13 +140,12 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		transfer_in AS (
 		    SELECT
 		        a.id,
-		        COALESCE(SUM(COALESCE(t.to_amount, t.amount)), 0)
-		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
-		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
+		        COALESCE(SUM(incoming.amount), 0)
 		            AS amount
 		    FROM accounts a
 		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
 		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
+		    LEFT JOIN transfer_shares incoming ON incoming.transaction_id = t.id AND incoming.user_id = $1
 		    WHERE (a.owner_id = $1 OR EXISTS (
 		              SELECT 1 FROM account_members am
 		              WHERE am.account_id = a.id AND am.user_id = $1))%s%s

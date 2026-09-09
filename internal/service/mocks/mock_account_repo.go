@@ -145,6 +145,21 @@ func (mr *MockaccountRepoMockRecorder) ListByUser(ctx, userID any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUser", reflect.TypeOf((*MockaccountRepo)(nil).ListByUser), ctx, userID)
 }
 
+// ListTransferAccounts mocks base method.
+func (m *MockaccountRepo) ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTransferAccounts", ctx, username)
+	ret0, _ := ret[0].([]model.TransferAccount)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTransferAccounts indicates an expected call of ListTransferAccounts.
+func (mr *MockaccountRepoMockRecorder) ListTransferAccounts(ctx, username any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransferAccounts", reflect.TypeOf((*MockaccountRepo)(nil).ListTransferAccounts), ctx, username)
+}
+
 // RemoveMember mocks base method.
 func (m *MockaccountRepo) RemoveMember(ctx context.Context, accountID, userID string) error {
 	m.ctrl.T.Helper()
