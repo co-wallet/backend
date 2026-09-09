@@ -17,6 +17,7 @@ import (
 	categoryhandler "github.com/co-wallet/backend/internal/handler/category"
 	currencyhandler "github.com/co-wallet/backend/internal/handler/currency"
 	invitehandler "github.com/co-wallet/backend/internal/handler/invite"
+	monefyhandler "github.com/co-wallet/backend/internal/handler/monefy"
 	taghandler "github.com/co-wallet/backend/internal/handler/tag"
 	transactionhandler "github.com/co-wallet/backend/internal/handler/transaction"
 	"github.com/co-wallet/backend/internal/middleware"
@@ -36,6 +37,7 @@ func newRouter(
 	adminSvc *service.AdminService,
 	inviteSvc *service.InviteService,
 	accountRepo *repository.AccountRepository,
+	importSvc *service.ImportService,
 ) http.Handler {
 	authHandler := authhandler.New(authSvc, userSvc)
 	accountHandler := accounthandler.New(accountSvc, userSvc)
@@ -46,6 +48,7 @@ func newRouter(
 	currencyHandler := currencyhandler.New(currencySvc)
 	adminHandler := adminhandler.New(adminSvc)
 	inviteHandler := invitehandler.New(inviteSvc)
+	importHandler := monefyhandler.New(importSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -80,6 +83,12 @@ func newRouter(
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(authSvc))
+			r.Route("/imports/monefy", func(r chi.Router) {
+				r.Get("/availability", importHandler.Availability)
+				r.Post("/preview", importHandler.Preview)
+				r.Post("/{previewID}/options", importHandler.Configure)
+				r.Post("/{previewID}/confirm", importHandler.Confirm)
+			})
 
 			r.Get("/users", authHandler.ListUsers)
 			r.Get("/users/me", authHandler.Me)
