@@ -47,6 +47,7 @@ func (f *importFixture) api(t *testing.T) (http.Handler, string) {
 	r.Post("/api/imports/monefy/{previewID}/options", h.Configure)
 	r.Post("/api/imports/monefy/{previewID}/confirm", h.Confirm)
 	r.Get("/api/accounts", a.List)
+	r.Post("/api/accounts", a.Create)
 	r.Get("/api/categories", c.List)
 	r.Get("/api/transactions", tx.List)
 	r.Get("/api/transactions/{transactionID}", tx.Get)

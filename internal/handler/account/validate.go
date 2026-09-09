@@ -39,7 +39,7 @@ func (r *createAccountReq) validate() error {
 		return fmt.Errorf("accessMode must be 'personal' or 'shared'")
 	}
 	if !r.Kind.IsValid() {
-		return fmt.Errorf("kind must be 'spending', 'deposit', or 'investment'")
+		return fmt.Errorf("kind must be 'spending', 'savings', 'deposit', 'savings_account', or 'investment'")
 	}
 	if r.InitialBalanceDate == "" {
 		return fmt.Errorf("initialBalanceDate is required")

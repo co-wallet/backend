@@ -69,7 +69,7 @@ func TestCreateAccountReq_Validate(t *testing.T) {
 		{
 			name:    "invalid kind",
 			modify:  func(r *createAccountReq) { r.Kind = "crypto" },
-			wantErr: "kind must be 'spending', 'deposit', or 'investment'",
+			wantErr: "kind must be 'spending', 'savings', 'deposit', 'savings_account', or 'investment'",
 		},
 		{
 			name: "empty access mode and kind use defaults",

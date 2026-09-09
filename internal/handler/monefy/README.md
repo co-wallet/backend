@@ -35,7 +35,7 @@
    ```
 
    Нужно передать каждый исходный счёт ровно один раз. Допустимы `spending`,
-   `deposit`, `investment`. Ответ `201` — **новый** `preview_id` с выбранными
+   `savings`, `deposit`, `savings_account`, `investment`. Ответ `201` — **новый** `preview_id` с выбранными
    параметрами и заново проверенным каталогом. Показывайте пользователю этот
    ответ и подтверждайте именно новый ID. Прежний preview неизменяем.
 4. `POST /api/imports/monefy/{previewID}/confirm` принимает JSON:

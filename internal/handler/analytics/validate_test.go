@@ -59,6 +59,13 @@ func TestParseFilterParams(t *testing.T) {
 			},
 		},
 		{
+			name:  "savings kinds with legacy selection",
+			query: url.Values{"account_kinds": {"savings,savings_account,deposit,savings"}},
+			check: func(t *testing.T, p filterParams) {
+				assert.Equal(t, []model.AccountKind{model.AccountKindSavings, model.AccountKindSavingsAccount, model.AccountKindDeposit}, p.AccountKinds)
+			},
+		},
+		{
 			name:  "all account kinds removes kind restriction",
 			query: url.Values{"account_kinds": {"all"}},
 			check: func(t *testing.T, p filterParams) {
@@ -68,7 +75,7 @@ func TestParseFilterParams(t *testing.T) {
 		{
 			name:    "invalid account kind",
 			query:   url.Values{"account_kinds": {"spending,crypto"}},
-			wantErr: "account_kinds must contain 'spending', 'deposit', or 'investment'",
+			wantErr: "account_kinds must contain 'spending', 'savings', 'deposit', 'savings_account', or 'investment'",
 		},
 		{
 			name:    "invalid date_from",

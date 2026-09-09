@@ -245,7 +245,7 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 			add(monefy.Blocking, "name_length", "Account", a.ID, "Имя длиннее 100 символов")
 		}
 		if !kinds[a.ID].IsValid() {
-			add(monefy.Blocking, "account_kind", "Account", a.ID, "Выберите spending, deposit или investment")
+			add(monefy.Blocking, "account_kind", "Account", a.ID, "Выберите тип средств: текущие средства, сбережения, вклад, накопительный счёт или инвестиции")
 		}
 		if _, found := p.AccountIcons[a.ID]; !found {
 			p.AccountIcons[a.ID] = suggestImportIcon(a.Name, "account")
