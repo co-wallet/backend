@@ -12,8 +12,9 @@
    `created_categories`, `account_membership`, `transactions`.
 2. `POST /api/imports/monefy/preview` принимает **тело одного SQLite .db**
    с `Content-Type: application/octet-stream`. Multipart и CSV не принимаются.
-   Ответ `201` содержит предпросмотр. До выбора типов счетов подтверждение
-   блокируется диагностикой `target_account_kind`.
+   Ответ `201` содержит предпросмотр с типом `spending` («Текущие средства»)
+   для всех счетов. Если эти типы подходят, запрос options не нужен; остальные
+   блокировки и необходимость подтверждать исключения сохраняются.
 3. `POST /api/imports/monefy/{previewID}/options` принимает JSON:
 
    ```json

@@ -112,7 +112,11 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader)
 		return model.ImportPreview{}, err
 	}
 	p := model.ImportPreview{ID: uuid.NewString(), UserID: user, SHA256: hex.EncodeToString(hash.Sum(nil)), ExpiresAt: time.Now().UTC().Add(preview.TTL), Report: report}
-	return s.prepare(ctx, p, nil)
+	kinds := make(map[string]model.AccountKind, len(report.Accounts))
+	for _, account := range report.Accounts {
+		kinds[account.ID] = model.AccountKindSpending
+	}
+	return s.prepare(ctx, p, kinds)
 }
 
 // Configure creates a new immutable snapshot. Previously returned IDs keep their

@@ -77,17 +77,40 @@ func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
 	}
 	s.Equal("1412.520", byID["travel"])
 	s.Equal("shared-food", p.Categories[0].ExistingID)
-	s.False(p.Report.CanImport())
+	s.True(p.Report.CanImport())
+	for _, account := range p.Accounts {
+		s.Equal(model.AccountKindSpending, account.Kind)
+	}
 	s.Len(p.SHA256, 64)
 	s.store.EXPECT().Load(s.user, p.ID).Return(p, nil)
 	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), false).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
 	s.store.EXPECT().Save(gomock.Any()).Return(nil)
-	configured, err := s.svc.Configure(context.Background(), s.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil)
+	configured, err := s.svc.Configure(context.Background(), s.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "spending"}, nil)
 	s.Require().NoError(err)
 	s.NotEqual(p.ID, configured.ID)
 	s.Equal(p.SHA256, configured.SHA256)
 	s.True(configured.Report.CanImport())
+	for _, account := range configured.Accounts {
+		want := model.AccountKindSpending
+		if account.SourceID == "travel" {
+			want = model.AccountKindDeposit
+		}
+		s.Equal(want, account.Kind)
+	}
+	for _, snapshot := range []model.ImportPreview{p, configured} {
+		s.store.EXPECT().Load(s.user, snapshot.ID).Return(snapshot, nil)
+		s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+		s.repo.EXPECT().Receipt(gomock.Any(), s.user, snapshot.ID).Return(model.ImportResult{}, apperr.ErrNotFound)
+		s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+		s.repo.EXPECT().Catalog(gomock.Any(), true).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
+		s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
+		s.repo.EXPECT().Write(gomock.Any(), snapshot).Return(model.ImportResult{PreviewID: snapshot.ID}, nil)
+		s.store.EXPECT().Delete(s.user, snapshot.ID).Return(nil)
+		result, confirmErr := s.svc.Confirm(context.Background(), s.user, snapshot.ID, true)
+		s.Require().NoError(confirmErr)
+		s.Equal(snapshot.ID, result.PreviewID)
+	}
 }
 func (s *ImportSuite) TestInvalidKinds() {
 	p := model.ImportPreview{Report: monefy.Report{Accounts: []monefy.Account{{ID: "a"}}}}

@@ -76,6 +76,7 @@ type apiPreview struct {
 	Counts             map[string]int `json:"counts"`
 	Accounts           []struct {
 		ID      string `json:"source_id"`
+		Kind    string `json:"kind"`
 		Name    string `json:"name"`
 		Balance string `json:"final_balance"`
 	} `json:"accounts"`
@@ -85,6 +86,16 @@ type apiPreview struct {
 }
 
 func TestMonefyAPIEndToEnd(t *testing.T) {
+	for _, override := range []bool{false, true} {
+		name := "defaults"
+		if override {
+			name = "override_one_account"
+		}
+		t.Run(name, func(t *testing.T) { testMonefyAPIEndToEnd(t, override) })
+	}
+}
+
+func testMonefyAPIEndToEnd(t *testing.T, override bool) {
 	f := newImportFixture(t)
 	src, err := sql.Open("sqlite", f.source)
 	require.NoError(t, err)
@@ -100,7 +111,10 @@ func TestMonefyAPIEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	var p apiPreview
 	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 201, &p)
-	require.False(t, p.CanConfirm)
+	require.True(t, p.CanConfirm)
+	for _, account := range p.Accounts {
+		require.Equal(t, "spending", account.Kind)
+	}
 	require.True(t, p.RequiresExclusions)
 	require.Equal(t, map[string]int{"accounts": 3, "categories": 3, "transactions": 3, "transfers": 2}, p.Counts)
 	require.Len(t, p.Exclusions, 1)
@@ -110,7 +124,9 @@ func TestMonefyAPIEndToEnd(t *testing.T) {
 		require.Equal(t, expectedBalances[a.Name], a.Balance)
 	}
 	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/confirm", []byte(`{}`), 400, nil)
-	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/options", []byte(`{"account_kinds":{"cash":"spending","travel":"deposit","reserve":"investment"}}`), 201, &p)
+	if override {
+		importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/options", []byte(`{"account_kinds":{"cash":"spending","travel":"deposit","reserve":"spending"}}`), 201, &p)
+	}
 	require.True(t, p.CanConfirm)
 	importRequest(t, h, token, "POST", "/api/imports/monefy/"+p.ID+"/confirm", []byte(`{}`), 400, nil)
 	var result map[string]any
@@ -123,13 +139,20 @@ func TestMonefyAPIEndToEnd(t *testing.T) {
 	var accounts []accounthandler.AccountResponse
 	importRequest(t, h, token, "GET", "/api/accounts?currency=RUB", nil, 200, &accounts)
 	require.Len(t, accounts, 3)
+	for _, account := range accounts {
+		want := "spending"
+		if override && account.Name == "Travel" {
+			want = "deposit"
+		}
+		require.Equal(t, want, account.Kind)
+	}
 	expected := map[string]struct {
 		initial, balance float64
-		currency, kind   string
+		currency         string
 	}{
-		"Cash":    {-1234.567, -3728.391, "RUB", "spending"},
-		"Travel":  {1, 1412.520, "TRY", "deposit"},
-		"Reserve": {0, 1234.567, "RUB", "investment"},
+		"Cash":    {-1234.567, -3728.391, "RUB"},
+		"Travel":  {1, 1412.520, "TRY"},
+		"Reserve": {0, 1234.567, "RUB"},
 	}
 	for _, a := range accounts {
 		e, ok := expected[a.Name]
@@ -139,7 +162,6 @@ func TestMonefyAPIEndToEnd(t *testing.T) {
 		require.Equal(t, e.balance, a.Balance.Native)
 		require.Equal(t, e.balance, a.Balance.TotalNative)
 		require.Equal(t, e.currency, a.Currency)
-		require.Equal(t, e.kind, a.Kind)
 		require.Equal(t, "personal", a.AccessMode)
 	}
 	var categories []categoryhandler.CategoryResponse
