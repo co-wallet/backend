@@ -295,3 +295,19 @@ func (s *AccountHandlerSuite) TestTransferAccounts_MinimalResponse() {
 	s.Equal(http.StatusOK, rec.Code)
 	s.JSONEq(`[{"id":"a","name":"Receiving","icon":null,"currency":"EUR"}]`, rec.Body.String())
 }
+
+func (s *AccountHandlerSuite) TestCreate_AllKinds() {
+	for _, kind := range []model.AccountKind{model.AccountKindSpending, model.AccountKindSavings, model.AccountKindDeposit, model.AccountKindSavingsAccount, model.AccountKindInvestment} {
+		s.Run(string(kind), func() {
+			s.svc.EXPECT().CreateAccount(gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, req model.CreateAccountReq) (model.Account, error) {
+				s.Equal(kind, req.Kind)
+				return model.Account{ID: "a1", Kind: req.Kind}, nil
+			})
+			body := `{"name":"Reserve","kind":"` + string(kind) + `","currency":"USD","initialBalanceDate":"2026-01-01"}`
+			rec := httptest.NewRecorder()
+			s.h.Create(rec, withUser(httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader(body)), "u1"))
+			s.Equal(http.StatusCreated, rec.Code)
+			s.Contains(rec.Body.String(), `"kind":"`+string(kind)+`"`)
+		})
+	}
+}

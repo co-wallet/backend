@@ -16,13 +16,16 @@ func (m AccountAccessMode) IsValid() bool {
 type AccountKind string
 
 const (
-	AccountKindSpending   AccountKind = "spending"
-	AccountKindDeposit    AccountKind = "deposit"
-	AccountKindInvestment AccountKind = "investment"
+	AccountKindSpending       AccountKind = "spending"
+	AccountKindSavings        AccountKind = "savings"
+	AccountKindSavingsAccount AccountKind = "savings_account"
+	AccountKindDeposit        AccountKind = "deposit"
+	AccountKindInvestment     AccountKind = "investment"
 )
 
 func (k AccountKind) IsValid() bool {
-	return k == AccountKindSpending || k == AccountKindDeposit || k == AccountKindInvestment
+	return k == AccountKindSpending || k == AccountKindSavings || k == AccountKindDeposit ||
+		k == AccountKindSavingsAccount || k == AccountKindInvestment
 }
 
 type Account struct {

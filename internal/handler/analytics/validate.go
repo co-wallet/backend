@@ -112,7 +112,7 @@ func parseFilterParams(q url.Values) (filterParams, error) {
 			for _, value := range strings.Split(raw, ",") {
 				kind := model.AccountKind(strings.TrimSpace(value))
 				if !kind.IsValid() {
-					return filterParams{}, fmt.Errorf("account_kinds must contain 'spending', 'deposit', or 'investment'")
+					return filterParams{}, fmt.Errorf("account_kinds must contain 'spending', 'savings', 'deposit', 'savings_account', or 'investment'")
 				}
 				if _, exists := seen[kind]; exists {
 					continue
