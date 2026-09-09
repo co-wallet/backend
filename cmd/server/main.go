@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/co-wallet/backend/internal/config"
 	"github.com/co-wallet/backend/internal/db"
+	"github.com/co-wallet/backend/internal/importer/preview"
 	"github.com/co-wallet/backend/internal/repository"
 	"github.com/co-wallet/backend/internal/service"
 )
@@ -60,6 +62,32 @@ func main() {
 	currencyRepo := repository.NewCurrencyRepository(pool)
 	adminRepo := repository.NewAdminRepository(pool)
 	inviteRepo := repository.NewInviteRepository(pool)
+	previewDir := os.Getenv("IMPORT_PREVIEW_DIR")
+	if previewDir == "" {
+		previewDir = filepath.Join(os.TempDir(), "cowallet-import-previews")
+	}
+	previewStore, err := preview.New(previewDir)
+	if err != nil {
+		slog.Error("initialize import preview storage")
+		os.Exit(1)
+	}
+	cleanupCtx, stopCleanup := context.WithCancel(ctx)
+	defer stopCleanup()
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			if err := previewStore.Sweep(); err != nil {
+				slog.Error("clean import previews")
+			}
+			select {
+			case <-cleanupCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	importSvc := service.NewImportService(pool, repository.NewImportRepository(pool), previewStore)
 
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
@@ -87,7 +115,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      newRouter(authSvc, userSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, inviteSvc, accountRepo),
+		Handler:      newRouter(authSvc, userSvc, accountSvc, categorySvc, transactionSvc, tagSvc, analyticsSvc, currencySvc, adminSvc, inviteSvc, accountRepo, importSvc),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

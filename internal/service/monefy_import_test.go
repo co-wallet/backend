@@ -1,0 +1,173 @@
+package service
+
+import (
+	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/co-wallet/backend/internal/apperr"
+	"github.com/co-wallet/backend/internal/importer/monefy"
+	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/service/mocks"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
+)
+
+type ImportSuite struct {
+	suite.Suite
+	repo     *mocks.MockimportRepo
+	store    *mocks.MockimportStore
+	svc      *ImportService
+	user, id string
+}
+
+func TestImportSuite(t *testing.T) { suite.Run(t, new(ImportSuite)) }
+func (s *ImportSuite) SetupTest() {
+	c := gomock.NewController(s.T())
+	s.repo = mocks.NewMockimportRepo(c)
+	s.store = mocks.NewMockimportStore(c)
+	s.svc = &ImportService{repo: s.repo, store: s.store, withTx: func(ctx context.Context, fn func(importRepo) error) error { return fn(s.repo) }}
+	s.user = uuid.NewString()
+	s.id = uuid.NewString()
+}
+func (s *ImportSuite) TestAccessAndNotEmptyBeforeParsing() {
+	_, err := s.svc.Preview(context.Background(), "", strings.NewReader(""))
+	s.ErrorIs(err, apperr.ErrUnauthorized)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{Reasons: []string{"owned_accounts"}}, nil)
+	_, err = s.svc.Preview(context.Background(), s.user, strings.NewReader(""))
+	s.ErrorContains(err, "account_not_empty")
+}
+func (s *ImportSuite) TestMalformedFile() {
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB"}, nil)
+	_, err := s.svc.Preview(context.Background(), s.user, strings.NewReader("date,amount\n2024-01-01,12"))
+	s.ErrorContains(err, "source_format")
+}
+func (s *ImportSuite) TestPreviewExactBalancesAndOptions() {
+	path := filepath.Join(s.T().TempDir(), "source.db")
+	d, err := sql.Open("sqlite", path)
+	s.Require().NoError(err)
+	fixture, err := os.ReadFile("../importer/monefy/testdata/v11.sql")
+	s.Require().NoError(err)
+	_, err = d.Exec(string(fixture))
+	s.Require().NoError(err)
+	_, err = d.Exec(`UPDATE Account SET InitialBalanceCents=1000 WHERE Id='travel'`)
+	s.Require().NoError(err)
+	s.Require().NoError(d.Close())
+	f, err := os.Open(path)
+	s.Require().NoError(err)
+	defer f.Close() //nolint:errcheck
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Currencies(gomock.Any()).Return([]string{"RUB", "TRY"}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(nil)
+	p, err := s.svc.Preview(context.Background(), s.user, f)
+	s.Require().NoError(err)
+	s.Equal("-3728.391", p.Accounts[0].Balance)
+	byID := map[string]string{}
+	for _, a := range p.Accounts {
+		byID[a.SourceID] = a.Balance
+	}
+	s.Equal("1412.520", byID["travel"])
+	s.Equal("shared-food", p.Categories[0].ExistingID)
+	s.False(p.Report.CanImport())
+	s.Len(p.SHA256, 64)
+	s.store.EXPECT().Load(s.user, p.ID).Return(p, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), false).Return([]model.Category{{ID: "shared-food", Name: " FOOD ", Type: model.CategoryTypeExpense}}, nil)
+	s.store.EXPECT().Save(gomock.Any()).Return(nil)
+	configured, err := s.svc.Configure(context.Background(), s.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"})
+	s.Require().NoError(err)
+	s.NotEqual(p.ID, configured.ID)
+	s.Equal(p.SHA256, configured.SHA256)
+	s.True(configured.Report.CanImport())
+}
+func (s *ImportSuite) TestInvalidKinds() {
+	p := model.ImportPreview{Report: monefy.Report{Accounts: []monefy.Account{{ID: "a"}}}}
+	s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	_, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "unknown"})
+	s.ErrorIs(err, apperr.ErrValidation)
+}
+func (s *ImportSuite) confirmStart(p model.ImportPreview) {
+	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(model.ImportResult{}, apperr.ErrNotFound)
+	s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+}
+func (s *ImportSuite) TestConfirmBlocker() {
+	s.confirmStart(model.ImportPreview{Report: monefy.Report{Diagnostics: []monefy.Diagnostic{{Severity: monefy.Blocking}}}})
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	s.ErrorContains(err, "preview_blocked")
+}
+func (s *ImportSuite) TestConfirmRequiresAcknowledgement() {
+	s.confirmStart(model.ImportPreview{Report: monefy.Report{Exclusions: []monefy.Exclusion{{ID: "removed"}}}})
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, false)
+	s.ErrorContains(err, "exclusions_not_confirmed")
+}
+func (s *ImportSuite) TestConfirmOtherUser() {
+	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(model.ImportResult{}, apperr.ErrNotFound)
+	s.store.EXPECT().Load(s.user, s.id).Return(model.ImportPreview{}, apperr.ErrNotFound)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	s.ErrorIs(err, apperr.ErrNotFound)
+}
+func (s *ImportSuite) TestRepeatUsesReceiptWithoutFile() {
+	want := model.ImportResult{PreviewID: s.id, CompletedAt: time.Now()}
+	s.repo.EXPECT().LockUser(gomock.Any(), s.user).Return(nil)
+	s.repo.EXPECT().Receipt(gomock.Any(), s.user, s.id).Return(want, nil)
+	s.store.EXPECT().Delete(s.user, s.id).Return(nil)
+	got, err := s.svc.Confirm(context.Background(), s.user, s.id, false)
+	s.NoError(err)
+	s.Equal(want, got)
+}
+func (s *ImportSuite) TestCatalogChanged() {
+	s.confirmStart(model.ImportPreview{Categories: []model.ImportCategory{{SourceID: "c", Name: "Food", Type: "expense"}}, Report: monefy.Report{Categories: []monefy.Category{{ID: "c", Name: "Food", Type: "expense"}}}})
+	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+	s.repo.EXPECT().Catalog(gomock.Any(), true).Return([]model.Category{{ID: "new", Name: "Food", Type: "expense"}}, nil)
+	_, err := s.svc.Confirm(context.Background(), s.user, s.id, true)
+	s.ErrorContains(err, "catalog_changed")
+}
+
+func (s *ImportSuite) TestDestinationDiagnostics() {
+	for _, tt := range []struct {
+		name, code string
+		change     func(*model.ImportPreview)
+	}{
+		{"zero", "target_amount_range", func(p *model.ImportPreview) { p.Report.Transactions[0].Amount = 0 }},
+		{"overflow", "target_amount_range", func(p *model.ImportPreview) { p.Report.Accounts[0].InitialBalance = 100000000000000 }},
+		{"duplicate", "target_ambiguous_category", func(p *model.ImportPreview) {
+			p.Report.Categories = append(p.Report.Categories, monefy.Category{ID: "c2", Name: " FOOD ", Type: "expense"})
+		}},
+		{"long name", "target_name_length", func(p *model.ImportPreview) { p.Report.Accounts[0].Name = strings.Repeat("я", 101) }},
+		{"before balance", "target_before_initial_balance", func(p *model.ImportPreview) {
+			p.Report.Transactions[0].CreatedAt = p.Report.Accounts[0].CreatedAt.Add(-48 * time.Hour)
+		}},
+	} {
+		s.Run(tt.name, func() {
+			p := model.ImportPreview{ID: s.id, UserID: s.user, Report: monefy.Report{
+				Accounts:     []monefy.Account{{ID: "a", Name: "Cash", Currency: "RUB", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				Categories:   []monefy.Category{{ID: "c", Name: "Food", Type: "expense"}},
+				Transactions: []monefy.Transaction{{ID: "t", AccountID: "a", CategoryID: "c", Type: "expense", Amount: -12345, CreatedAt: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)}},
+			}}
+			tt.change(&p)
+			s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
+			s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
+			s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+			s.store.EXPECT().Save(gomock.Any()).Return(nil)
+			got, err := s.svc.Configure(context.Background(), s.user, s.id, map[string]model.AccountKind{"a": "spending"})
+			s.Require().NoError(err)
+			found := false
+			for _, d := range got.Report.Diagnostics {
+				if d.Code == tt.code && d.Severity == monefy.Blocking {
+					found = true
+				}
+			}
+			s.True(found)
+		})
+	}
+}
