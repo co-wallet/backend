@@ -31,7 +31,6 @@ type TransactionResponse struct {
 	CategoryID            *string         `json:"categoryId"`
 	Description           *string         `json:"description"`
 	Date                  time.Time       `json:"date"`
-	IncludeInBalance      bool            `json:"includeInBalance"`
 	CreatedBy             string          `json:"createdBy"`
 	CreatedAt             time.Time       `json:"createdAt"`
 	Shares                []ShareResponse `json:"shares"`
@@ -61,7 +60,6 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 		CategoryID:            tx.CategoryID,
 		Description:           tx.Description,
 		Date:                  tx.Date,
-		IncludeInBalance:      tx.IncludeInBalance,
 		CreatedBy:             tx.CreatedBy,
 		CreatedAt:             tx.CreatedAt,
 		Shares:                shares,

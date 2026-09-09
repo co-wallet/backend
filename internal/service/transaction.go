@@ -62,7 +62,6 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		CategoryID:            req.CategoryID,
 		Description:           req.Description,
 		Date:                  req.Date,
-		IncludeInBalance:      req.IncludeInBalance,
 		CreatedBy:             userID,
 	}
 
@@ -161,9 +160,6 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 	}
 	if req.Date != nil {
 		existing.Date = *req.Date
-	}
-	if req.IncludeInBalance != nil {
-		existing.IncludeInBalance = *req.IncludeInBalance
 	}
 
 	if req.Shares != nil {

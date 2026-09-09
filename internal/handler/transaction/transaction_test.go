@@ -194,3 +194,25 @@ func (s *TransactionHandlerSuite) TestDelete_NotFound() {
 	s.h.Delete(rec, req)
 	s.Equal(http.StatusNotFound, rec.Code)
 }
+
+// Older clients may still send the flag, but it must not enter the domain request.
+func (s *TransactionHandlerSuite) TestCreate_IgnoresLegacyBalanceFlag() {
+	s.svc.EXPECT().Create(gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, req model.CreateTransactionReq) (model.Transaction, error) {
+		s.Equal(model.CreateTransactionReq{AccountID: "acc-1", Type: model.TransactionTypeExpense, Amount: 100, Currency: "USD", Date: time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC)}, req)
+		return model.Transaction{ID: "tx1", Amount: 100}, nil
+	})
+	req := withUser(httptest.NewRequest(http.MethodPost, "/transactions", strings.NewReader(`{"accountId":"acc-1","type":"expense","amount":100,"currency":"USD","date":"2025-05-01T00:00:00Z","includeInBalance":false}`)), "u1")
+	rec := httptest.NewRecorder()
+	s.h.Create(rec, req)
+	s.Equal(http.StatusCreated, rec.Code)
+	s.NotContains(rec.Body.String(), "includeInBalance")
+}
+
+func (s *TransactionHandlerSuite) TestUpdate_IgnoresLegacyBalanceFlag() {
+	s.svc.EXPECT().Update(gomock.Any(), "u1", "tx1", model.UpdateTransactionReq{}).Return(model.Transaction{ID: "tx1", Amount: 100}, nil)
+	req := withTxIDParam(withUser(httptest.NewRequest(http.MethodPatch, "/transactions/tx1", strings.NewReader(`{"includeInBalance":false}`)), "u1"), "tx1")
+	rec := httptest.NewRecorder()
+	s.h.Update(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+	s.NotContains(rec.Body.String(), "includeInBalance")
+}
