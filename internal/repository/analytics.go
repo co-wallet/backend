@@ -323,6 +323,10 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 
 func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter) ([]model.TagStat, error) {
 	displayCurrency := f.DisplayCurrency
+	txType := f.TxType
+	if txType != model.TransactionTypeIncome {
+		txType = model.TransactionTypeExpense
+	}
 
 	args := []any{f.UserID}
 	idx := 2
@@ -333,7 +337,8 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	dispIdx := idx
 	dateFrom := idx + 1
 	dateTo := idx + 2
-	args = append(args, displayCurrency, f.DateFrom, f.DateTo)
+	txTypeIdx := idx + 3
+	args = append(args, displayCurrency, f.DateFrom, f.DateTo, txType)
 
 	q := fmt.Sprintf(`
 		SELECT tg.id, tg.name, COALESCE(SUM(%s), 0) AS amount
@@ -346,7 +351,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
-		  AND t.type = 'expense'
+		  AND t.type = $%d
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		GROUP BY tg.id, tg.name
@@ -355,6 +360,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		acctCond,
 		kindCond,
 		txCond,
+		txTypeIdx,
 		dateFrom,
 		dateTo,
 	)
