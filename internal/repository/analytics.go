@@ -123,9 +123,9 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		        a.initial_balance
 		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
 		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
-		        + COALESCE(SUM(CASE WHEN t.type = 'income'   AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
-		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
-		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.include_in_balance THEN ts.amount ELSE 0 END), 0)
+		        + COALESCE(SUM(CASE WHEN t.type = 'income'   THEN ts.amount ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  THEN ts.amount ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' THEN ts.amount ELSE 0 END), 0)
 		        AS balance_native
 		    FROM accounts a
 		    LEFT JOIN transactions t ON t.account_id = a.id
@@ -140,7 +140,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		transfer_in AS (
 		    SELECT
 		        a.id,
-		        COALESCE(SUM(CASE WHEN t.include_in_balance THEN COALESCE(t.to_amount, t.amount) ELSE 0 END), 0)
+		        COALESCE(SUM(COALESCE(t.to_amount, t.amount)), 0)
 		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
 		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
 		            AS amount
@@ -191,7 +191,6 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
-		  AND t.include_in_balance = true
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		  AND t.type IN ('expense','income')`,
@@ -246,7 +245,6 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
-		  AND t.include_in_balance = true
 		  AND t.type = $%d
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
@@ -311,7 +309,6 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
 		  AND a.deleted_at IS NULL
-		  AND t.include_in_balance = true
 		  AND t.type = 'expense'
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date

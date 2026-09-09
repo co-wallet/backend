@@ -26,7 +26,6 @@ type createTransactionReq struct {
 	CategoryID            *string               `json:"categoryId"`
 	Description           *string               `json:"description"`
 	Date                  time.Time             `json:"date"`
-	IncludeInBalance      bool                  `json:"includeInBalance"`
 	Shares                []shareReq            `json:"shares"`
 	Tags                  []string              `json:"tags"`
 }
@@ -67,7 +66,6 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 		CategoryID:            r.CategoryID,
 		Description:           r.Description,
 		Date:                  r.Date,
-		IncludeInBalance:      r.IncludeInBalance,
 		Tags:                  r.Tags,
 	}
 	if len(r.Shares) > 0 {
@@ -87,7 +85,6 @@ type updateTransactionReq struct {
 	CategoryID            *string    `json:"categoryId"`
 	Description           *string    `json:"description"`
 	Date                  *time.Time `json:"date"`
-	IncludeInBalance      *bool      `json:"includeInBalance"`
 	Shares                []shareReq `json:"shares"`
 	Tags                  []string   `json:"tags"`
 }
@@ -108,7 +105,6 @@ func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 		CategoryID:            r.CategoryID,
 		Description:           r.Description,
 		Date:                  r.Date,
-		IncludeInBalance:      r.IncludeInBalance,
 		Tags:                  r.Tags,
 	}
 	if len(r.Shares) > 0 {

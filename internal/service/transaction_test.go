@@ -45,12 +45,11 @@ func (s *TransactionServiceSuite) TestCreate_PersonalAccount_SingleShare() {
 	ctx := context.Background()
 	userID := "user-1"
 	req := model.CreateTransactionReq{
-		AccountID:        "acc-1",
-		Type:             model.TransactionTypeExpense,
-		Amount:           100.00,
-		Currency:         "RUB",
-		Date:             time.Now(),
-		IncludeInBalance: true,
+		AccountID: "acc-1",
+		Type:      model.TransactionTypeExpense,
+		Amount:    100.00,
+		Currency:  "RUB",
+		Date:      time.Now(),
 	}
 
 	s.accountRepo.EXPECT().IsMember(ctx, req.AccountID, userID).Return(true, nil)
@@ -453,7 +452,6 @@ func (s *TransactionServiceSuite) TestCreate_DefaultCurrencyAmount_Stored() {
 		Amount:                100.00,
 		Currency:              "USD",
 		Date:                  time.Now(),
-		IncludeInBalance:      true,
 		DefaultCurrency:       &defCur,
 		DefaultCurrencyAmount: &defAmt,
 	}
