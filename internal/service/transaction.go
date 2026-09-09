@@ -111,23 +111,6 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		if err := validateTransferAmount(tx); err != nil {
 			return model.Transaction{}, err
 		}
-		incoming := tx.Amount
-		if tx.ToAmount != nil {
-			incoming = *tx.ToAmount
-		}
-		members, err := s.repo.GetMemberDefaults(ctx, destination.ID)
-		if err != nil {
-			return model.Transaction{}, err
-		}
-		if len(members) == 0 {
-			tx.ToShares = []model.TransactionShare{{UserID: destination.OwnerID, Amount: incoming}}
-		} else {
-			tx.ToShares = make([]model.TransactionShare, len(members))
-			for i, member := range members {
-				tx.ToShares[i] = model.TransactionShare{UserID: member.UserID, Amount: member.DefaultShare}
-			}
-			tx.ToShares = scaleShares(tx.ToShares, incoming)
-		}
 	}
 
 	tx.Shares, err = s.resolveShares(ctx, req, userID)
@@ -168,7 +151,7 @@ func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (mo
 		}
 		tx.ReadOnly = !member
 	}
-	return transferView(tx, userID), nil
+	return transferView(tx), nil
 }
 
 func (s *TransactionService) List(ctx context.Context, userID string, f model.TransactionFilter) ([]model.Transaction, error) {
@@ -195,7 +178,7 @@ func (s *TransactionService) List(ctx context.Context, userID string, f model.Tr
 	}
 	for i := range txs {
 		txs[i].Tags = tagsByTx[txs[i].ID]
-		txs[i] = transferView(txs[i], userID)
+		txs[i] = transferView(txs[i])
 	}
 	return txs, nil
 }
@@ -239,13 +222,6 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		if err := validateTransferAmount(existing); err != nil {
 			return model.Transaction{}, err
 		}
-		incoming := existing.Amount
-		if existing.ToAmount != nil {
-			incoming = *existing.ToAmount
-		}
-		if req.Amount != nil || req.ToAmount != nil {
-			existing.ToShares = scaleShares(existing.ToShares, incoming)
-		}
 	} else if req.ToAmount != nil {
 		return model.Transaction{}, fmt.Errorf("to_amount requires a transfer: %w", apperr.ErrValidation)
 	}
@@ -276,11 +252,7 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 	} else if req.Amount != nil {
 		// Amount changed but no explicit shares provided — recalculate shares
 		// to keep transaction_shares in sync with the new amount.
-		if existing.Type == model.TransactionTypeTransfer {
-			existing.Shares = scaleShares(existing.Shares, existing.Amount)
-		} else {
-			existing.Shares, err = s.recalcShares(ctx, existing)
-		}
+		existing.Shares, err = s.recalcShares(ctx, existing)
 		if err != nil {
 			return model.Transaction{}, err
 		}

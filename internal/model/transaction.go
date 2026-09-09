@@ -19,8 +19,6 @@ type Transaction struct {
 	ToAccountName         string
 	ToCurrency            string
 	ReadOnly              bool
-	RecipientAmount       *float64
-	ToShares              []TransactionShare
 	ID                    string
 	AccountID             string
 	ToAccountID           *string

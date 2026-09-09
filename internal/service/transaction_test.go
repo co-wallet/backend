@@ -532,14 +532,8 @@ func (s *TransactionServiceSuite) TestCreate_TransferDestinations() {
 			s.accountRepo.EXPECT().GetTransferDestination(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled, AccessMode: tc.destinationMode}, nil)
 			s.accountRepo.EXPECT().IsMember(ctx, "dest", "sender").Return(tc.member, nil)
 			if tc.want == nil {
-				s.repo.EXPECT().GetMemberDefaults(ctx, "dest").Return(nil, nil)
 				s.repo.EXPECT().GetMemberDefaults(ctx, "source").Return(nil, nil)
 				s.repo.EXPECT().Create(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
-					incoming := 100.0
-					if tc.toAmount != nil {
-						incoming = *tc.toAmount
-					}
-					s.Equal([]model.TransactionShare{{UserID: "recipient", Amount: incoming}}, tx.ToShares)
 					s.Equal(100.0, tx.Shares[0].Amount)
 					return tx, nil
 				})
@@ -573,7 +567,7 @@ func (s *TransactionServiceSuite) TestTransferRecipientCannotMutate() {
 func (s *TransactionServiceSuite) TestTransferRecipientPrivacy() {
 	ctx := context.Background()
 	tx := model.Transaction{ID: "tx", AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer,
-		Shares: []model.TransactionShare{{UserID: "sender", Amount: 100}}, ToShares: []model.TransactionShare{{UserID: "recipient", Amount: 40}, {UserID: "other", Amount: 50}}, CategoryID: ptr.To("private")}
+		Shares: []model.TransactionShare{{UserID: "sender", Amount: 100}}, ToAmount: ptr.To(90.0), CategoryID: ptr.To("private")}
 	s.repo.EXPECT().GetByID(ctx, "tx").Return(tx, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "source", "recipient").Return(false, nil).Times(2)
 	s.accountRepo.EXPECT().IsMember(ctx, "dest", "recipient").Return(true, nil)
@@ -584,7 +578,7 @@ func (s *TransactionServiceSuite) TestTransferRecipientPrivacy() {
 	s.Empty(result.Shares)
 	s.Empty(result.Tags)
 	s.Nil(result.CategoryID)
-	s.Equal(40.0, *result.RecipientAmount)
+	s.Equal(90.0, *result.ToAmount)
 	tx.ReadOnly = true
 	s.repo.EXPECT().List(ctx, "recipient", gomock.Any()).Return([]model.Transaction{tx}, nil)
 	s.tagRepo.EXPECT().ListForTransactions(ctx, []string{"tx"}).Return(map[string][]model.Tag{"tx": {{Name: "private"}}}, nil)
@@ -592,22 +586,5 @@ func (s *TransactionServiceSuite) TestTransferRecipientPrivacy() {
 	s.NoError(err)
 	s.Empty(listed[0].Shares)
 	s.Empty(listed[0].Tags)
-	s.Equal(40.0, *listed[0].RecipientAmount)
-}
-func (s *TransactionServiceSuite) TestTransferUpdatePreservesHistoricalShares() {
-	ctx := context.Background()
-	tx := model.Transaction{ID: "tx", AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", ToCurrency: "EUR", ToAmount: ptr.To(90.0),
-		Shares: []model.TransactionShare{{UserID: "sender", Amount: 70}, {UserID: "former", Amount: 30}}, ToShares: []model.TransactionShare{{UserID: "recipient", Amount: 60}, {UserID: "former", Amount: 30}}}
-	s.repo.EXPECT().GetByID(ctx, "tx").Return(tx, nil)
-	s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
-	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, updated model.Transaction) (model.Transaction, error) {
-		s.Equal(140.0, updated.Shares[0].Amount)
-		s.Equal(60.0, updated.Shares[1].Amount)
-		s.Equal(120.0, updated.ToShares[0].Amount)
-		s.Equal(60.0, updated.ToShares[1].Amount)
-		return updated, nil
-	})
-	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return(nil, nil)
-	_, err := s.svc.Update(ctx, "sender", "tx", model.UpdateTransactionReq{Amount: ptr.To(200.0), ToAmount: ptr.To(180.0)})
-	s.NoError(err)
+	s.Equal(90.0, *listed[0].ToAmount)
 }

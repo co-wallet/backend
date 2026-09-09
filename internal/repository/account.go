@@ -208,12 +208,10 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		transfer_in AS (
 		    SELECT
 		        a.id,
-		        COALESCE(SUM(COALESCE(t.to_amount, t.amount)), 0) AS amount,
-		       COALESCE(SUM(incoming.amount), 0) AS user_amount
+		        COALESCE(SUM(COALESCE(t.to_amount, t.amount)), 0) AS amount
 		    FROM accounts a
 		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
 		        AND (a.initial_balance_date IS NULL OR t.date >= a.initial_balance_date)
-		    LEFT JOIN transfer_shares incoming ON incoming.transaction_id = t.id AND incoming.user_id = $1
 		    WHERE a.deleted_at IS NULL
 		      AND (a.owner_id = $1 OR EXISTS (
 		               SELECT 1 FROM account_members am
@@ -222,13 +220,15 @@ func (r *AccountRepository) ListBalancesByUser(ctx context.Context, userID, disp
 		)
 		SELECT
 		    pa.id,
-		    pa.balance_native + COALESCE(ti.user_amount, 0),
+		    pa.balance_native + COALESCE(ti.amount, 0)
+		        * COALESCE((SELECT am_me.default_share FROM account_members am_me
+		                    WHERE am_me.account_id = pa.id AND am_me.user_id = $1), 1.0),
 		    %s AS balance_display,
 		    pa.total_native + COALESCE(ti.amount, 0),
 		    %s AS total_display
 		FROM per_account pa
 		LEFT JOIN transfer_in ti ON ti.id = pa.id`,
-		convertExpr("pa.balance_native + COALESCE(ti.user_amount, 0)", "pa.currency", 2),
+		convertExpr("pa.balance_native + COALESCE(ti.amount, 0) * COALESCE((SELECT am_me.default_share FROM account_members am_me WHERE am_me.account_id = pa.id AND am_me.user_id = $1), 1.0)", "pa.currency", 2),
 		convertExpr("pa.total_native + COALESCE(ti.amount, 0)", "pa.currency", 2),
 	)
 

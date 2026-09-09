@@ -59,9 +59,6 @@ func (r *TransactionRepository) createLocked(ctx context.Context, tx model.Trans
 	if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 		return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 	}
-	if err = r.saveTransferShares(ctx, tx); err != nil {
-		return model.Transaction{}, err
-	}
 	return tx, nil
 }
 
@@ -88,11 +85,6 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (model.T
 		return model.Transaction{}, err
 	}
 	tx.Shares, err = r.listShares(ctx, id)
-	if err != nil {
-		return model.Transaction{}, err
-	}
-	incoming, err := r.listTransferShares(ctx, []string{id})
-	tx.ToShares = incoming[id]
 	return tx, err
 }
 
@@ -200,13 +192,8 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		if err != nil {
 			return nil, err
 		}
-		incoming, err := r.listTransferShares(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
 		for i := range txs {
 			txs[i].Shares = sharesByTx[txs[i].ID]
-			txs[i].ToShares = incoming[txs[i].ID]
 		}
 	}
 	return txs, nil
@@ -252,9 +239,6 @@ func (r *TransactionRepository) updateLocked(ctx context.Context, tx model.Trans
 		if err = r.upsertShares(ctx, tx.ID, tx.Shares); err != nil {
 			return model.Transaction{}, fmt.Errorf("upsert shares: %w", err)
 		}
-	}
-	if err = r.saveTransferShares(ctx, tx); err != nil {
-		return model.Transaction{}, err
 	}
 	tx.Shares, err = r.listShares(ctx, tx.ID)
 	return tx, err
@@ -355,35 +339,4 @@ func (r *TransactionRepository) listShares(ctx context.Context, txID string) ([]
 
 func isNoRows(err error) bool {
 	return errors.Is(err, pgx.ErrNoRows)
-}
-
-func (r *TransactionRepository) saveTransferShares(ctx context.Context, tx model.Transaction) error {
-	if tx.Type != model.TransactionTypeTransfer {
-		return nil
-	}
-	if _, err := r.db.Exec(ctx, `DELETE FROM transfer_shares WHERE transaction_id = $1`, tx.ID); err != nil {
-		return err
-	}
-	for _, share := range tx.ToShares {
-		if _, err := r.db.Exec(ctx, `INSERT INTO transfer_shares (transaction_id, user_id, amount) VALUES ($1,$2,$3)`, tx.ID, share.UserID, share.Amount); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (r *TransactionRepository) listTransferShares(ctx context.Context, ids []string) (map[string][]model.TransactionShare, error) {
-	rows, err := r.db.Query(ctx, `SELECT transaction_id, user_id, amount FROM transfer_shares WHERE transaction_id = ANY($1) ORDER BY user_id`, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := make(map[string][]model.TransactionShare)
-	for rows.Next() {
-		var share model.TransactionShare
-		if err := rows.Scan(&share.TransactionID, &share.UserID, &share.Amount); err != nil {
-			return nil, err
-		}
-		result[share.TransactionID] = append(result[share.TransactionID], share)
-	}
-	return result, rows.Err()
 }

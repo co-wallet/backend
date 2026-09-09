@@ -2,9 +2,10 @@ package service
 
 import (
 	"fmt"
+	"math"
+
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/model"
-	"math"
 )
 
 func validateTransferAmount(tx model.Transaction) error {
@@ -20,38 +21,10 @@ func validateTransferAmount(tx model.Transaction) error {
 	return nil
 }
 
-func scaleShares(shares []model.TransactionShare, amount float64) []model.TransactionShare {
-	shares = append([]model.TransactionShare(nil), shares...)
-	total := 0.0
-	for _, share := range shares {
-		total += share.Amount
-	}
-	distributed := 0.0
-	for i := range shares {
-		part := 0.0
-		if total > 0 {
-			part = math.Round(shares[i].Amount/total*amount*10000) / 10000
-		}
-		if i == len(shares)-1 {
-			part = math.Round((amount-distributed)*10000) / 10000
-		}
-		shares[i].Amount = part
-		distributed += part
-	}
-	return shares
-}
-
-func transferView(tx model.Transaction, userID string) model.Transaction {
+func transferView(tx model.Transaction) model.Transaction {
 	if !tx.ReadOnly {
 		return tx
 	}
-	amount := 0.0
-	for _, share := range tx.ToShares {
-		if share.UserID == userID {
-			amount = share.Amount
-		}
-	}
-	tx.RecipientAmount = &amount
 	tx.Shares = nil
 	tx.Tags = nil
 	tx.CategoryID = nil

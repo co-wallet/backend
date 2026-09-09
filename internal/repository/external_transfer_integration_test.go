@@ -74,7 +74,10 @@ func TestExternalTransfers(t *testing.T) {
 	txRepo := repository.NewTransactionRepository(pool)
 	svc := service.NewTransactionService(pool, txRepo, accounts, repository.NewTagRepository(pool))
 	req := model.CreateTransactionReq{AccountID: src.ID, ToAccountID: ptr.To(dst.ID), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", ToAmount: ptr.To(90.0), Date: time.Now(), Tags: []string{"private"}}
-	// A tag write failure must roll back the transfer and both sides of its shares.
+	var removedTable *string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT to_regclass('transfer_shares')::text`).Scan(&removedTable))
+	require.Nil(t, removedTable)
+	// A tag write failure must roll back the transfer and source shares.
 	badReq := req
 	badReq.Tags = []string{strings.Repeat("x", 1000)}
 	_, err = svc.Create(ctx, sender, badReq)
@@ -98,17 +101,35 @@ func TestExternalTransfers(t *testing.T) {
 	require.True(t, incoming.ReadOnly)
 	require.Empty(t, incoming.Tags)
 	require.Empty(t, incoming.Shares)
-	require.Equal(t, 90.0, *incoming.RecipientAmount)
+	require.Equal(t, 90.0, *incoming.ToAmount)
 	require.Equal(t, "Destination", incoming.ToAccountName)
 	listed, err := svc.List(ctx, recipient, model.TransactionFilter{})
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	require.True(t, listed[0].ReadOnly)
-	require.Equal(t, 90.0, *listed[0].RecipientAmount)
+	require.Equal(t, 90.0, *listed[0].ToAmount)
 	require.ErrorIs(t, svc.Delete(ctx, recipient, created.ID), apperr.ErrForbidden)
 	_, err = svc.Update(ctx, recipient, created.ID, model.UpdateTransactionReq{Amount: ptr.To(1.0)})
 	require.ErrorIs(t, err, apperr.ErrForbidden)
-	// Converting the destination to shared never changes historical personal receipts.
+	balances, err := accounts.ListBalancesByUser(ctx, recipient, "EUR")
+	require.NoError(t, err)
+	require.Equal(t, 90.0, balances[dst.ID].BalanceNative)
+	require.Equal(t, 90.0, balances[dst.ID].TotalNative)
+	summary, err := repository.NewAnalyticsRepository(pool).Summary(ctx, model.AnalyticsFilter{UserID: recipient, DisplayCurrency: "EUR", DateFrom: time.Now().AddDate(0, 0, -1), DateTo: time.Now().AddDate(0, 0, 1)})
+	require.NoError(t, err)
+	require.Equal(t, 90.0, summary.Balance)
+	dst.AcceptTransfers = false
+	_, err = accounts.Update(ctx, dst)
+	require.NoError(t, err)
+	_, err = svc.Create(ctx, sender, req)
+	require.ErrorIs(t, err, apperr.ErrForbidden)
+	// Existing personal transfers remain editable after acceptance is disabled.
+	_, err = svc.Update(ctx, sender, created.ID, model.UpdateTransactionReq{Amount: ptr.To(200.0), ToAmount: ptr.To(180.0)})
+	require.NoError(t, err)
+	balances, err = accounts.ListBalancesByUser(ctx, recipient, "EUR")
+	require.NoError(t, err)
+	require.Equal(t, 180.0, balances[dst.ID].BalanceNative)
+	// Shared destinations are hidden externally and accept only participant transfers.
 	dst.AccessMode = model.AccountAccessModeShared
 	_, err = accounts.Update(ctx, dst)
 	require.NoError(t, err)
@@ -125,24 +146,6 @@ func TestExternalTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, svc.Delete(ctx, sender, sharedTransfer.ID))
 	require.NoError(t, accounts.RemoveMember(ctx, dst.ID, sender))
-	balances, err := accounts.ListBalancesByUser(ctx, recipient, "EUR")
-	require.NoError(t, err)
-	require.Equal(t, 90.0, balances[dst.ID].BalanceNative)
-	require.Equal(t, 90.0, balances[dst.ID].TotalNative)
-	summary, err := repository.NewAnalyticsRepository(pool).Summary(ctx, model.AnalyticsFilter{UserID: recipient, DisplayCurrency: "EUR", DateFrom: time.Now().AddDate(0, 0, -1), DateTo: time.Now().AddDate(0, 0, 1)})
-	require.NoError(t, err)
-	require.Equal(t, 90.0, summary.Balance)
-	dst.AcceptTransfers = false
-	_, err = accounts.Update(ctx, dst)
-	require.NoError(t, err)
-	_, err = svc.Create(ctx, sender, req)
-	require.ErrorIs(t, err, apperr.ErrForbidden)
-	// Existing transfers remain editable by the source, retaining the old proportions.
-	_, err = svc.Update(ctx, sender, created.ID, model.UpdateTransactionReq{Amount: ptr.To(200.0), ToAmount: ptr.To(180.0)})
-	require.NoError(t, err)
-	balances, err = accounts.ListBalancesByUser(ctx, recipient, "EUR")
-	require.NoError(t, err)
-	require.Equal(t, 180.0, balances[dst.ID].BalanceNative)
 	// Four-decimal personal amounts survive metadata-only edits unchanged.
 	hidden.AcceptTransfers = true
 	_, err = accounts.Update(ctx, hidden)
@@ -153,13 +156,13 @@ func TestExternalTransfers(t *testing.T) {
 	require.NoError(t, err)
 	tinyView, err := svc.GetByID(ctx, recipient, tiny.ID)
 	require.NoError(t, err)
-	require.Equal(t, 0.0001, *tinyView.RecipientAmount)
+	require.Equal(t, 0.0001, tinyView.Amount)
 	require.NoError(t, svc.Delete(ctx, sender, tiny.ID))
 	require.NoError(t, accounts.SoftDelete(ctx, dst.ID))
 	_, err = svc.Create(ctx, sender, req)
 	require.ErrorIs(t, err, apperr.ErrNotFound)
 	require.NoError(t, svc.Delete(ctx, sender, created.ID))
 	var remaining int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM transfer_shares`).Scan(&remaining))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM transaction_shares`).Scan(&remaining))
 	require.Zero(t, remaining)
 }
