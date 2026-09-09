@@ -70,6 +70,9 @@ func (s *AccountService) GetByID(ctx context.Context, accountID string) (model.A
 }
 
 func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req model.CreateAccountReq) (model.Account, error) {
+	if req.AccessMode == model.AccountAccessModeShared && req.AcceptTransfers {
+		return model.Account{}, fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
+	}
 	a := model.Account{
 		OwnerID:            ownerID,
 		AcceptTransfers:    req.AcceptTransfers,
@@ -135,6 +138,12 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			a.AccessMode = *req.AccessMode
 		}
 
+		if a.AccessMode == model.AccountAccessModeShared {
+			if req.AcceptTransfers != nil && *req.AcceptTransfers {
+				return fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
+			}
+			a.AcceptTransfers = false
+		}
 		if req.Name != nil {
 			a.Name = strings.TrimSpace(*req.Name)
 		}

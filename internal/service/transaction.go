@@ -98,6 +98,9 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		if err != nil {
 			return model.Transaction{}, err
 		}
+		if !member && (source.AccessMode == model.AccountAccessModeShared || destination.AccessMode == model.AccountAccessModeShared) {
+			return model.Transaction{}, fmt.Errorf("external transfers require personal source and destination accounts: %w", apperr.ErrForbidden)
+		}
 		if !member && !destination.AcceptTransfers {
 			return model.Transaction{}, fmt.Errorf("destination unavailable: %w", apperr.ErrForbidden)
 		}

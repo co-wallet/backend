@@ -264,7 +264,7 @@ func (r *AccountRepository) IsMember(ctx context.Context, accountID, userID stri
 func (r *AccountRepository) ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error) {
 	rows, err := r.db.Query(ctx, `SELECT a.id, a.name, a.icon, a.currency
 		FROM accounts a JOIN users u ON u.id = a.owner_id
-		WHERE u.username = $1 AND a.accept_transfers AND a.deleted_at IS NULL
+		WHERE u.username = $1 AND a.accept_transfers AND a.access_mode = 'personal' AND a.deleted_at IS NULL
 		ORDER BY a.name, a.id`, username)
 	if err != nil {
 		return nil, err

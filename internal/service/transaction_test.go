@@ -510,20 +510,26 @@ func (s *TransactionServiceSuite) TestCreate_TransferDestinations() {
 		currency        string
 		toAmount        *float64
 		want            error
+		sourceMode      model.AccountAccessMode
+		destinationMode model.AccountAccessMode
 	}{
-		{"external open", true, false, "EUR", ptr.To(90.0), nil},
-		{"external hidden", false, false, "USD", nil, apperr.ErrForbidden},
-		{"own hidden", false, true, "USD", nil, nil},
-		{"missing converted amount", true, false, "EUR", nil, apperr.ErrValidation},
-		{"negative converted amount", true, false, "EUR", ptr.To(-2.0), apperr.ErrValidation},
-		{"same currency mismatch", true, false, "USD", ptr.To(90.0), apperr.ErrValidation},
+		{"external open", true, false, "EUR", ptr.To(90.0), nil, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"external hidden", false, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"own hidden", false, true, "USD", nil, nil, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"missing converted amount", true, false, "EUR", nil, apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"negative converted amount", true, false, "EUR", ptr.To(-2.0), apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"same currency mismatch", true, false, "USD", ptr.To(90.0), apperr.ErrValidation, model.AccountAccessModePersonal, model.AccountAccessModePersonal},
+		{"shared external rejected", true, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModeShared, model.AccountAccessModePersonal},
+		{"shared own allowed", false, true, "USD", nil, nil, model.AccountAccessModeShared, model.AccountAccessModePersonal},
+		{"external shared destination rejected", true, false, "USD", nil, apperr.ErrForbidden, model.AccountAccessModePersonal, model.AccountAccessModeShared},
+		{"member shared destination allowed", false, true, "USD", nil, nil, model.AccountAccessModePersonal, model.AccountAccessModeShared},
 	} {
 		s.Run(tc.name, func() {
 			s.SetupTest()
 			ctx := context.Background()
 			s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
-			s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{ID: "source", Currency: "USD"}, nil)
-			s.accountRepo.EXPECT().GetTransferDestination(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled}, nil)
+			s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{ID: "source", Currency: "USD", AccessMode: tc.sourceMode}, nil)
+			s.accountRepo.EXPECT().GetTransferDestination(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled, AccessMode: tc.destinationMode}, nil)
 			s.accountRepo.EXPECT().IsMember(ctx, "dest", "sender").Return(tc.member, nil)
 			if tc.want == nil {
 				s.repo.EXPECT().GetMemberDefaults(ctx, "dest").Return(nil, nil)

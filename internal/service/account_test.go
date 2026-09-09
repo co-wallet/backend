@@ -332,3 +332,11 @@ func (s *AccountServiceSuite) TestTransferSearch() {
 	s.NoError(err)
 	s.Len(accounts, 1)
 }
+
+func (s *AccountServiceSuite) TestSharedAccountCannotEnableExternalTransfers() {
+	_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: model.AccountAccessModeShared, AcceptTransfers: true})
+	s.ErrorIs(err, apperr.ErrValidation)
+	s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", OwnerID: "owner", AccessMode: model.AccountAccessModeShared}, nil)
+	_, err = s.svc.UpdateAccount(context.Background(), "owner", "a", model.UpdateAccountReq{AcceptTransfers: ptr.To(true)})
+	s.ErrorIs(err, apperr.ErrValidation)
+}
