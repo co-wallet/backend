@@ -18,6 +18,7 @@ type accountResponse struct {
 	Members            []importMemberResponse  `json:"members"`
 	SourceID           string                  `json:"source_id"`
 	Name               string                  `json:"name"`
+	SourceName         string                  `json:"source_name"`
 	Currency           string                  `json:"currency"`
 	Kind               model.AccountKind       `json:"kind"`
 	Icon               string                  `json:"icon"`
@@ -100,7 +101,7 @@ func toPreview(p model.ImportPreview) previewResponse {
 		for _, m := range options.Members {
 			members = append(members, importMemberResponse{m.UserID, m.Username, m.DefaultShare, m.InitialBalance, m.FinalBalance})
 		}
-		r.Accounts = append(r.Accounts, accountResponse{options.AccessMode, members, a.ID, a.Name, a.Currency, options.Kind, options.Icon, a.Icon, a.InitialBalance.String(), a.CreatedAt, options.Balance, a.IncludedInTotal, a.DisabledAt})
+		r.Accounts = append(r.Accounts, accountResponse{options.AccessMode, members, a.ID, options.Name, a.Name, a.Currency, options.Kind, options.Icon, a.Icon, a.InitialBalance.String(), a.CreatedAt, options.Balance, a.IncludedInTotal, a.DisabledAt})
 		if !seen[a.Currency] {
 			r.Currencies = append(r.Currencies, a.Currency)
 			seen[a.Currency] = true

@@ -63,6 +63,7 @@ type ImportAccount struct {
 	AccessMode AccountAccessMode
 	Members    []ImportMember
 	SourceID   string
+	Name       string
 	Kind       AccountKind
 	Icon       string
 	Balance    string

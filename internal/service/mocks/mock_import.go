@@ -41,19 +41,19 @@ func (m *MockimportRepo) EXPECT() *MockimportRepoMockRecorder {
 	return m.recorder
 }
 
-// Availability mocks base method.
-func (m *MockimportRepo) Availability(arg0 context.Context, arg1 string) (model.ImportAvailability, error) {
+// AccountNames mocks base method.
+func (m *MockimportRepo) AccountNames(arg0 context.Context, arg1 string, arg2 bool) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Availability", arg0, arg1)
-	ret0, _ := ret[0].(model.ImportAvailability)
+	ret := m.ctrl.Call(m, "AccountNames", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Availability indicates an expected call of Availability.
-func (mr *MockimportRepoMockRecorder) Availability(arg0, arg1 any) *gomock.Call {
+// AccountNames indicates an expected call of AccountNames.
+func (mr *MockimportRepoMockRecorder) AccountNames(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Availability", reflect.TypeOf((*MockimportRepo)(nil).Availability), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountNames", reflect.TypeOf((*MockimportRepo)(nil).AccountNames), arg0, arg1, arg2)
 }
 
 // Catalog mocks base method.

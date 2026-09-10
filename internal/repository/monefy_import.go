@@ -8,6 +8,7 @@ import (
 	"github.com/co-wallet/backend/internal/db"
 	"github.com/co-wallet/backend/internal/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,7 +18,7 @@ func NewImportRepository(pool *pgxpool.Pool) *ImportRepository { return &ImportR
 func (r *ImportRepository) WithTx(tx pgx.Tx) *ImportRepository { return &ImportRepository{db: tx} }
 
 // FOR UPDATE conflicts with the KEY SHARE locks taken by existing user FKs.
-// Lock before reading emptiness, in a separate READ COMMITTED statement so that
+// Lock before reading destination state, in a separate READ COMMITTED statement so that
 // ordinary writes which committed while we waited are visible to the check.
 func (r *ImportRepository) LockUser(ctx context.Context, user string) error {
 	var id string
@@ -38,28 +39,34 @@ func (r *ImportRepository) GetByUsername(ctx context.Context, username string) (
 	return u, err
 }
 
-func (r *ImportRepository) Availability(ctx context.Context, user string) (model.ImportAvailability, error) {
-	var a, c, m, t bool
-	err := r.db.QueryRow(ctx, `SELECT
-	 EXISTS(SELECT 1 FROM accounts WHERE owner_id=$1),
-	 EXISTS(SELECT 1 FROM categories WHERE user_id=$1),
-	 EXISTS(SELECT 1 FROM account_members WHERE user_id=$1),
-	 EXISTS(SELECT 1 FROM transactions WHERE created_by=$1
-	 OR id IN (SELECT transaction_id FROM transaction_shares WHERE user_id=$1))`, user).Scan(&a, &c, &m, &t)
-	out := model.ImportAvailability{Reasons: []string{}}
-	if a {
-		out.Reasons = append(out.Reasons, "owned_accounts")
+// AccountNames includes owned and joined accounts, including archived history.
+func (r *ImportRepository) AccountNames(ctx context.Context, user string, lock bool) ([]string, error) {
+	if lock {
+		// NOWAIT avoids a lock-order deadlock with ordinary writes waiting on the user FK.
+		// Hold the lock through commit so names cannot change after validation.
+		if _, err := r.db.Exec(ctx, "LOCK TABLE accounts IN SHARE ROW EXCLUSIVE MODE NOWAIT"); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
+				return nil, apperr.ErrConflict
+			}
+			return nil, err
+		}
 	}
-	if c {
-		out.Reasons = append(out.Reasons, "created_categories")
+	rows, err := r.db.Query(ctx, `SELECT name FROM accounts WHERE owner_id=$1
+	 OR id IN (SELECT account_id FROM account_members WHERE user_id=$1) ORDER BY id`, user)
+	if err != nil {
+		return nil, err
 	}
-	if m {
-		out.Reasons = append(out.Reasons, "account_membership")
+	defer rows.Close()
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
 	}
-	if t {
-		out.Reasons = append(out.Reasons, "transactions")
-	}
-	return out, err
+	return names, rows.Err()
 }
 
 func (r *ImportRepository) Currencies(ctx context.Context) ([]string, error) {
@@ -119,7 +126,7 @@ func (r *ImportRepository) Write(ctx context.Context, p model.ImportPreview) (mo
 	for i, a := range p.Report.Accounts {
 		var id string
 		err := r.db.QueryRow(ctx, `INSERT INTO accounts(owner_id,name,access_mode,kind,currency,icon,initial_balance,initial_balance_date)
-		 VALUES($1,$2,$8,$3,$4,$5,$6::numeric,$7) RETURNING id`, p.UserID, a.Name, p.Accounts[i].Kind, a.Currency, p.Accounts[i].Icon, a.InitialBalance.String(), a.CreatedAt, p.Accounts[i].AccessMode).Scan(&id)
+		 VALUES($1,$2,$8,$3,$4,$5,$6::numeric,$7) RETURNING id`, p.UserID, p.Accounts[i].Name, p.Accounts[i].Kind, a.Currency, p.Accounts[i].Icon, a.InitialBalance.String(), a.CreatedAt, p.Accounts[i].AccessMode).Scan(&id)
 		if err != nil {
 			return out, err
 		}
