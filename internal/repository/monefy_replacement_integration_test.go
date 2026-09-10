@@ -144,7 +144,7 @@ func TestMonefyReplacementRollbackAndBadSource(t *testing.T) {
 	require.NoError(t, err)
 }
 func TestMonefyReplacementBlocksExternalRelations(t *testing.T) {
-	for _, kind := range []string{"shared_accounts", "foreign_membership", "foreign_members", "outgoing", "incoming", "foreign_authors", "foreign_shares", "external_share"} {
+	for _, kind := range []string{"foreign_members", "outgoing", "incoming", "outgoing_shared", "incoming_shared", "foreign_authors", "foreign_shares"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newImportFixture(t)
 			ctx := context.Background()
@@ -152,29 +152,27 @@ func TestMonefyReplacementBlocksExternalRelations(t *testing.T) {
 			other := f.oldAccount(t, f.other)
 			var err error
 			switch kind {
-			case "shared_accounts":
-				_, err = f.pool.Exec(ctx, `UPDATE accounts SET access_mode='shared' WHERE id=$1`, a)
-			case "foreign_membership":
-				_, err = f.pool.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,1)`, other, f.user)
 			case "foreign_members":
 				_, err = f.pool.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,0)`, a, f.other)
-			case "outgoing":
+			case "outgoing", "outgoing_shared":
 				_, err = f.pool.Exec(ctx, `UPDATE transactions SET type='transfer',to_account_id=$1 WHERE id=$2`, other, tx)
-			case "incoming":
+			case "incoming", "incoming_shared":
 				_, err = f.pool.Exec(ctx, `UPDATE transactions SET type='transfer',account_id=$1,to_account_id=$2 WHERE id=$3`, other, a, tx)
 			case "foreign_authors":
 				_, err = f.pool.Exec(ctx, `UPDATE transactions SET created_by=$1 WHERE id=$2`, f.other, tx)
 			case "foreign_shares":
 				_, err = f.pool.Exec(ctx, `INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES($1,$2,0)`, tx, f.other)
-			case "external_share":
-				_, err = f.pool.Exec(ctx, `UPDATE transactions SET account_id=$1,created_by=$2 WHERE id=$3`, other, f.other, tx)
 			}
 			require.NoError(t, err)
+			if strings.HasSuffix(kind, "_shared") {
+				_, err = f.pool.Exec(ctx, `UPDATE accounts SET owner_id=$1,access_mode='shared' WHERE id=$2`, f.user, other)
+				require.NoError(t, err)
+			}
 			p := f.replacement(t)
 			require.False(t, p.Report.CanImport())
 			require.NotEmpty(t, p.Report.Diagnostics)
 			code := kind
-			if kind == "incoming" || kind == "outgoing" || kind == "external_share" {
+			if strings.HasPrefix(kind, "incoming") || strings.HasPrefix(kind, "outgoing") {
 				code = "external_transactions"
 			}
 			require.Positive(t, p.Replacement.Blockers[code])
@@ -184,8 +182,72 @@ func TestMonefyReplacementBlocksExternalRelations(t *testing.T) {
 		})
 	}
 }
+
+func TestMonefyReplacementPreservesSharedHistory(t *testing.T) {
+	for _, kind := range []string{"owned", "archived", "joined", "only_shared"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newImportFixture(t)
+			ctx := context.Background()
+			a, tx := f.oldHistory(t)
+			owner := f.user
+			if kind == "joined" {
+				owner = f.other
+			}
+			shared := f.oldAccount(t, owner)
+			_, err := f.pool.Exec(ctx, `UPDATE accounts SET access_mode='shared',name='Cash' WHERE id=$1`, shared)
+			require.NoError(t, err)
+			if kind == "archived" {
+				_, err = f.pool.Exec(ctx, `UPDATE accounts SET deleted_at=now() WHERE id=$1`, shared)
+				require.NoError(t, err)
+			}
+			if kind == "only_shared" {
+				_, err = f.pool.Exec(ctx, `UPDATE accounts SET access_mode='shared' WHERE id=$1`, a)
+				require.NoError(t, err)
+			}
+			_, err = f.pool.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,0.5),($1,$3,0.5)`, shared, f.user, f.other)
+			require.NoError(t, err)
+			// Both authors and both shares must survive, including the importing user's.
+			for _, author := range []string{f.user, f.other} {
+				var id string
+				require.NoError(t, f.pool.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,date,created_by) VALUES($1,'expense',10,'RUB',CURRENT_DATE,$2) RETURNING id`, shared, author).Scan(&id))
+				_, err = f.pool.Exec(ctx, `INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES($1,$2,5),($1,$3,5)`, id, f.user, f.other)
+				require.NoError(t, err)
+				_, err = f.pool.Exec(ctx, `WITH tag AS (INSERT INTO tags(user_id,name) VALUES($1,$2) RETURNING id) INSERT INTO transaction_tags SELECT $3,id FROM tag`, author, id, id)
+				require.NoError(t, err)
+			}
+			query := `SELECT jsonb_build_array(
+ (SELECT to_jsonb(a) FROM accounts a WHERE id=$1),
+ (SELECT jsonb_agg(to_jsonb(m) ORDER BY user_id) FROM account_members m WHERE account_id=$1),
+ (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM transactions t WHERE account_id=$1),
+ (SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM transaction_shares s WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id=$1)),
+ (SELECT jsonb_agg(to_jsonb(l) ORDER BY transaction_id,tag_id) FROM transaction_tags l WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id=$1)))::text`
+			var before, after string
+			require.NoError(t, f.pool.QueryRow(ctx, query, shared).Scan(&before))
+			p := f.replacement(t)
+			require.True(t, p.Report.CanImport(), p.Report.Diagnostics)
+			if kind == "only_shared" {
+				require.Empty(t, p.Replacement.Accounts)
+			} else {
+				require.Len(t, p.Replacement.Accounts, 1)
+				require.Equal(t, a, p.Replacement.Accounts[0].ID)
+			}
+			for _, account := range p.Accounts {
+				if account.SourceID == "cash" {
+					require.Equal(t, "Cash (1)", account.Name)
+				}
+			}
+			_, err = f.svc.Confirm(ctx, f.user, p.ID, true, true)
+			require.NoError(t, err)
+			require.NoError(t, f.pool.QueryRow(ctx, query, shared).Scan(&after))
+			require.Equal(t, before, after)
+			var exists bool
+			require.NoError(t, f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id=$1) OR EXISTS(SELECT 1 FROM transactions WHERE id=$2)`, a, tx).Scan(&exists))
+			require.Equal(t, kind == "only_shared", exists)
+		})
+	}
+}
 func TestMonefyReplacementDetectsChangesAndRefreshesOptions(t *testing.T) {
-	for _, kind := range []string{"amount", "share", "name", "new_account", "deleted_account", "member", "external_link", "tag_link"} {
+	for _, kind := range []string{"amount", "share", "name", "access_mode", "new_account", "deleted_account", "member", "external_link", "tag_link"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newImportFixture(t)
 			ctx := context.Background()
@@ -199,6 +261,8 @@ func TestMonefyReplacementDetectsChangesAndRefreshesOptions(t *testing.T) {
 				_, err = f.pool.Exec(ctx, `UPDATE transaction_shares SET amount=43 WHERE transaction_id=$1`, tx)
 			case "name":
 				_, err = f.pool.Exec(ctx, `UPDATE accounts SET name='Edited' WHERE id=$1`, a)
+			case "access_mode":
+				_, err = f.pool.Exec(ctx, `UPDATE accounts SET access_mode='shared' WHERE id=$1`, a)
 			case "new_account":
 				f.oldAccount(t, f.user)
 			case "deleted_account":

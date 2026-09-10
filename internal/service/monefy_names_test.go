@@ -15,12 +15,14 @@ func (s *ImportSuite) TestConfigureUniqueAccountNames() {
 		name                   string
 		existing, source, want []string
 		mode                   model.ImportMode
+		deleted                []model.ImportReplacementAccount
 	}{
 		{name: "no conflict", source: []string{"Cash"}, want: []string{"Cash"}},
 		{name: "case and spaces", existing: []string{" CASH ", "Cash (1)"}, source: []string{"Cash"}, want: []string{"Cash (2)"}},
 		{name: "reserve source names", existing: []string{"Cash"}, source: []string{"Cash", "Cash (1)", "Cash"}, want: []string{"Cash (2)", "Cash (1)", "Cash (3)"}},
 		{name: "unicode limit", existing: []string{strings.Repeat("я", 100)}, source: []string{strings.Repeat("я", 100)}, want: []string{strings.Repeat("я", 96) + " (1)"}},
-		{name: "replacement ignores old names", mode: model.ImportReplace, existing: []string{"Cash"}, source: []string{"Cash", "Cash"}, want: []string{"Cash", "Cash (1)"}},
+		{name: "replacement ignores old names", deleted: []model.ImportReplacementAccount{{Name: "Cash"}}, mode: model.ImportReplace, existing: []string{"Cash"}, source: []string{"Cash", "Cash"}, want: []string{"Cash", "Cash (1)"}},
+		{name: "replacement reserves preserved names", mode: model.ImportReplace, existing: []string{"Cash", "Cash"}, deleted: []model.ImportReplacementAccount{{Name: "Cash"}}, source: []string{"Cash"}, want: []string{"Cash (1)"}},
 	} {
 		s.Run(tc.name, func() {
 			s.names = tc.existing
@@ -34,7 +36,7 @@ func (s *ImportSuite) TestConfigureUniqueAccountNames() {
 			s.store.EXPECT().Load(s.user, s.id).Return(p, nil)
 			s.repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
 			if tc.mode == model.ImportReplace {
-				s.repo.EXPECT().Replacement(gomock.Any(), s.user).Return(model.ImportReplacement{}, nil)
+				s.repo.EXPECT().Replacement(gomock.Any(), s.user).Return(model.ImportReplacement{Accounts: tc.deleted}, nil)
 			}
 			s.store.EXPECT().Save(gomock.Any()).Return(nil)
 			got, err := s.svc.Configure(context.Background(), s.user, s.id, kinds, nil, nil, nil)
