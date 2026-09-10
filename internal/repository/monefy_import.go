@@ -28,6 +28,16 @@ func (r *ImportRepository) LockUser(ctx context.Context, user string) error {
 	return err
 }
 
+// A transaction-scoped lookup holds the user's active state through commit.
+func (r *ImportRepository) GetByUsername(ctx context.Context, username string) (model.User, error) {
+	var u model.User
+	err := r.db.QueryRow(ctx, `SELECT id,username,is_active FROM users WHERE username=$1 FOR SHARE`, username).Scan(&u.ID, &u.Username, &u.IsActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return u, apperr.ErrNotFound
+	}
+	return u, err
+}
+
 func (r *ImportRepository) Availability(ctx context.Context, user string) (model.ImportAvailability, error) {
 	var a, c, m, t bool
 	err := r.db.QueryRow(ctx, `SELECT
@@ -109,13 +119,15 @@ func (r *ImportRepository) Write(ctx context.Context, p model.ImportPreview) (mo
 	for i, a := range p.Report.Accounts {
 		var id string
 		err := r.db.QueryRow(ctx, `INSERT INTO accounts(owner_id,name,access_mode,kind,currency,icon,initial_balance,initial_balance_date)
-		 VALUES($1,$2,'personal',$3,$4,$5,$6::numeric,$7) RETURNING id`, p.UserID, a.Name, p.Accounts[i].Kind, a.Currency, p.Accounts[i].Icon, a.InitialBalance.String(), a.CreatedAt).Scan(&id)
+		 VALUES($1,$2,$8,$3,$4,$5,$6::numeric,$7) RETURNING id`, p.UserID, a.Name, p.Accounts[i].Kind, a.Currency, p.Accounts[i].Icon, a.InitialBalance.String(), a.CreatedAt, p.Accounts[i].AccessMode).Scan(&id)
 		if err != nil {
 			return out, err
 		}
 		accounts[a.ID] = id
-		if _, err = r.db.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,1)`, id, p.UserID); err != nil {
-			return out, err
+		for _, m := range p.Accounts[i].Members {
+			if _, err = r.db.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,$3)`, id, m.UserID, m.DefaultShare); err != nil {
+				return out, err
+			}
 		}
 	}
 	for _, c := range p.Categories {
@@ -140,26 +152,39 @@ func (r *ImportRepository) Write(ctx context.Context, p model.ImportPreview) (mo
 		if amount < 0 {
 			amount = -amount
 		}
-		_, err := r.db.Exec(ctx, `WITH inserted AS (
-		 INSERT INTO transactions(account_id,type,amount,currency,category_id,description,date,created_by)
-		 VALUES($1,$2,$3::numeric,$4,$5,$6,$7,$8) RETURNING id)
-		 INSERT INTO transaction_shares(transaction_id,user_id,amount) SELECT id,$8,$3::numeric FROM inserted`,
-			accounts[t.AccountID], t.Type, amount.String(), t.Currency, categories[t.CategoryID], t.Note, t.CreatedAt, p.UserID)
+		var id string
+		err := r.db.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,category_id,description,date,created_by)
+		 VALUES($1,$2,$3::numeric,$4,$5,$6,$7,$8) RETURNING id`,
+			accounts[t.AccountID], t.Type, amount.String(), t.Currency, categories[t.CategoryID], t.Note, t.CreatedAt, p.UserID).Scan(&id)
 		if err != nil {
+			return out, err
+		}
+		if err = r.writeImportShares(ctx, id, p.TransactionShares[t.ID]); err != nil {
 			return out, err
 		}
 	}
 	for _, t := range p.Report.Transfers {
-		_, err := r.db.Exec(ctx, `WITH inserted AS (
-		 INSERT INTO transactions(account_id,to_account_id,type,amount,to_amount,currency,description,date,created_by)
-		 VALUES($1,$2,'transfer',$3::numeric,$4::numeric,$5,$6,$7,$8) RETURNING id)
-		 INSERT INTO transaction_shares(transaction_id,user_id,amount) SELECT id,$8,$3::numeric FROM inserted`,
-			accounts[t.FromAccountID], accounts[t.ToAccountID], t.FromAmount.String(), t.ToAmount.String(), t.FromCurrency, t.Note, t.CreatedAt, p.UserID)
+		var id string
+		err := r.db.QueryRow(ctx, `INSERT INTO transactions(account_id,to_account_id,type,amount,to_amount,currency,description,date,created_by)
+		 VALUES($1,$2,'transfer',$3::numeric,$4::numeric,$5,$6,$7,$8) RETURNING id`,
+			accounts[t.FromAccountID], accounts[t.ToAccountID], t.FromAmount.String(), t.ToAmount.String(), t.FromCurrency, t.Note, t.CreatedAt, p.UserID).Scan(&id)
 		if err != nil {
+			return out, err
+		}
+		if err = r.writeImportShares(ctx, id, p.TransferShares[t.ID]); err != nil {
 			return out, err
 		}
 	}
 	err := r.db.QueryRow(ctx, `INSERT INTO monefy_imports(preview_id,user_id,accounts,categories,reused_categories,transactions,transfers)
 	 VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING completed_at`, p.ID, p.UserID, out.Accounts, out.Categories, out.ReusedCategories, out.Transactions, out.Transfers).Scan(&out.CompletedAt)
 	return out, err
+}
+
+func (r *ImportRepository) writeImportShares(ctx context.Context, id string, shares []model.ImportShare) error {
+	for _, share := range shares {
+		if _, err := r.db.Exec(ctx, `INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES($1,$2,$3::numeric)`, id, share.UserID, share.Amount); err != nil {
+			return err
+		}
+	}
+	return nil
 }

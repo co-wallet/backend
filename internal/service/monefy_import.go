@@ -26,6 +26,7 @@ import (
 
 //go:generate mockgen -source=monefy_import.go -destination=mocks/mock_import.go -package=mocks
 type importRepo interface {
+	GetByUsername(context.Context, string) (model.User, error)
 	LockUser(context.Context, string) error
 	LockReplacement(context.Context) error
 	Replacement(context.Context, string) (model.ImportReplacement, error)
@@ -131,7 +132,7 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader,
 
 // Configure creates a new immutable snapshot. Previously returned IDs keep their
 // original parameters, so confirmation cannot race with a mutable options form.
-func (s *ImportService) Configure(ctx context.Context, user, id string, kinds map[string]model.AccountKind, categoryIcons, accountIcons map[string]string) (model.ImportPreview, error) {
+func (s *ImportService) Configure(ctx context.Context, user, id string, kinds map[string]model.AccountKind, categoryIcons, accountIcons map[string]string, access map[string]model.ImportAccountAccess) (model.ImportPreview, error) {
 	p, err := s.store.Load(user, id)
 	if err != nil {
 		return p, err
@@ -175,6 +176,16 @@ func (s *ImportService) Configure(ctx context.Context, user, id string, kinds ma
 			return model.ImportPreview{}, importError("invalid_account_icons", apperr.ErrValidation)
 		}
 		p.AccountIcons[sourceID] = icon
+	}
+	p.AccountAccess = maps.Clone(p.AccountAccess)
+	if p.AccountAccess == nil {
+		p.AccountAccess = map[string]model.ImportAccountAccess{}
+	}
+	for sourceID, config := range access {
+		if _, found := kinds[sourceID]; !found {
+			return model.ImportPreview{}, importError("invalid_account_access", apperr.ErrValidation)
+		}
+		p.AccountAccess[sourceID] = config
 	}
 	p.CategoryIcons = icons
 	p.ID = uuid.NewString()
@@ -312,8 +323,11 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 	for i := range p.Accounts {
 		p.Accounts[i].Balance = new(big.Rat).SetFrac(balances[p.Accounts[i].SourceID], big.NewInt(1000)).FloatString(3)
 	}
+	if err = prepareImportShares(ctx, s.repo, &p); err != nil {
+		return model.ImportPreview{}, err
+	}
 	add(monefy.Warning, "icons", "", "", "Иконки новых счетов и категорий подобраны по названию, цвета выбраны случайно из палитры co-wallet. Оформление можно изменить до подтверждения. Иконки общих категорий сохраняются; подбор выполняется локально на сервере")
-	add(monefy.Warning, "flags", "", "", "Все счета станут личными и активными. IsIncludedInTotalBalance и disabled не переносятся: общий баланс определяется выбранным kind; история отключённых сущностей сохраняется")
+	add(monefy.Warning, "flags", "", "", "Счета по умолчанию личные; совместный доступ задаётся явно до импорта. Все счета станут активными. IsIncludedInTotalBalance и disabled не переносятся: общий баланс определяется выбранным kind; история отключённых сущностей сохраняется")
 	if err = s.store.Save(p); err != nil {
 		if errors.Is(err, preview.ErrCapacity) {
 			return model.ImportPreview{}, importError("preview_storage_full", errors.Join(apperr.ErrConflict, err))
@@ -437,6 +451,9 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 			if !allowed[a.Currency] || !p.Accounts[i].Kind.IsValid() {
 				return importError("preview_stale", apperr.ErrConflict)
 			}
+		}
+		if err = validateImportMembers(ctx, r, p); err != nil {
+			return err
 		}
 		if p.Mode == model.ImportReplace {
 			if err = r.DeleteReplacement(ctx, user); err != nil {

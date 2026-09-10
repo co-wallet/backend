@@ -84,7 +84,7 @@ func (f *importFixture) configured(t *testing.T) model.ImportPreview {
 	defer src.Close() //nolint:errcheck
 	p, err := f.svc.Preview(context.Background(), f.user, src, model.ImportEmpty)
 	require.NoError(t, err)
-	p, err = f.svc.Configure(context.Background(), f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
+	p, err = f.svc.Configure(context.Background(), f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil, nil)
 	require.NoError(t, err)
 	require.True(t, p.Report.CanImport(), p.Report.Diagnostics)
 	return p
@@ -181,7 +181,7 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	p, err := f.svc.Preview(ctx, f.user, src, model.ImportEmpty)
 	require.NoError(t, err)
 	require.NoError(t, src.Close())
-	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
+	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, p.Report.Exclusions, 1)
 	_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
@@ -190,7 +190,7 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	require.NoError(t, err)
 	_, err = f.svc.Confirm(ctx, f.user, p.ID, true, false)
 	require.ErrorContains(t, err, "catalog_changed")
-	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
+	p, err = f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil, nil)
 	require.NoError(t, err)
 	result, err := f.svc.Confirm(ctx, f.user, p.ID, true, false)
 	require.NoError(t, err)
@@ -291,7 +291,7 @@ func TestMonefyCategoryIconsPersistOnImport(t *testing.T) {
 	kinds := map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}
 	chosen := "preset:groceries|purple|none"
 	category := p.Categories[0]
-	configured, err := f.svc.Configure(ctx, f.user, p.ID, kinds, map[string]string{category.SourceID: chosen}, map[string]string{"cash": "preset:wallet|pink|none"})
+	configured, err := f.svc.Configure(ctx, f.user, p.ID, kinds, map[string]string{category.SourceID: chosen}, map[string]string{"cash": "preset:wallet|pink|none"}, nil)
 	require.NoError(t, err)
 	_, err = f.svc.Confirm(ctx, f.user, configured.ID, true, false)
 	require.NoError(t, err)

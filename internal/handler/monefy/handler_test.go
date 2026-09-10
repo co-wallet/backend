@@ -66,10 +66,23 @@ func TestOptionsAppearanceContract(t *testing.T) {
 	h := New(svc)
 	r := chi.NewRouter()
 	r.Post("/{previewID}/options", h.Configure)
-	svc.EXPECT().Configure(gomock.Any(), "user", "id", map[string]model.AccountKind{"a": "spending"}, map[string]string{"c": "preset:cafe|red|none"}, map[string]string{"a": "preset:cash|pink|pink"}).Return(model.ImportPreview{ID: "new"}, nil)
+	svc.EXPECT().Configure(gomock.Any(), "user", "id", map[string]model.AccountKind{"a": "spending"}, map[string]string{"c": "preset:cafe|red|none"}, map[string]string{"a": "preset:cash|pink|pink"}, map[string]model.ImportAccountAccess{}).Return(model.ImportPreview{ID: "new"}, nil)
 	req := httptest.NewRequest("POST", "/id/options", strings.NewReader(`{"account_kinds":{"a":"spending"},"category_icons":{"c":"preset:cafe|red|none"},"account_icons":{"a":"preset:cash|pink|pink"}}`)).WithContext(context.WithValue(context.Background(), middleware.ContextUserID, "user"))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.Contains(t, w.Body.String(), `"preview_id":"new"`)
+}
+
+func TestSharedOptionsContract(t *testing.T) {
+	svc := mocks.NewMockimportService(gomock.NewController(t))
+	h := New(svc)
+	r := chi.NewRouter()
+	r.Post("/{previewID}/options", h.Configure)
+	expected := map[string]model.ImportAccountAccess{"a": {AccessMode: "shared", Members: []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: .6}, {Username: "other", DefaultShare: .4}}}}
+	svc.EXPECT().Configure(gomock.Any(), "user", "id", map[string]model.AccountKind{"a": "spending"}, gomock.Any(), gomock.Any(), expected).Return(model.ImportPreview{ID: "new"}, nil)
+	req := httptest.NewRequest("POST", "/id/options", strings.NewReader(`{"account_kinds":{"a":"spending"},"account_access":{"a":{"access_mode":"shared","members":[{"username":"owner","default_share":0.6},{"username":"other","default_share":0.4}]}}}`)).WithContext(context.WithValue(context.Background(), middleware.ContextUserID, "user"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
 }

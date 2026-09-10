@@ -15,6 +15,9 @@ type ImportPreview struct {
 	ExpiresAt            time.Time
 	Report               monefy.Report
 	Accounts             []ImportAccount
+	AccountAccess        map[string]ImportAccountAccess
+	TransactionShares    map[string][]ImportShare
+	TransferShares       map[string][]ImportShare
 	Categories           []ImportCategory
 	CategoryIcons        map[string]string
 	AccountIcons         map[string]string
@@ -41,11 +44,28 @@ type ImportReplacementAccount struct {
 	DeletedAt          *time.Time
 }
 
+type ImportAccountAccess struct {
+	AccessMode AccountAccessMode
+	Members    []CreateAccountMemberReq
+}
+
+type ImportShare struct {
+	UserID, Amount string
+}
+
+type ImportMember struct {
+	UserID, Username             string
+	DefaultShare                 float64
+	InitialBalance, FinalBalance string
+}
+
 type ImportAccount struct {
-	SourceID string
-	Kind     AccountKind
-	Icon     string
-	Balance  string
+	AccessMode AccountAccessMode
+	Members    []ImportMember
+	SourceID   string
+	Kind       AccountKind
+	Icon       string
+	Balance    string
 }
 
 type ImportCategory struct {
