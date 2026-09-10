@@ -215,7 +215,7 @@ func TestMonefyReplacementDetectsChangesAndRefreshesOptions(t *testing.T) {
 			_, err = f.svc.Confirm(ctx, f.user, p.ID, true, true)
 			require.ErrorContains(t, err, "replacement_changed")
 			f.exists(t, a, tx)
-			configured, err := f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil)
+			configured, err := f.svc.Configure(ctx, f.user, p.ID, map[string]model.AccountKind{"cash": "spending", "travel": "deposit", "reserve": "investment"}, nil, nil, nil)
 			require.NoError(t, err)
 			require.NotEqual(t, p.Replacement.Fingerprint, configured.Replacement.Fingerprint)
 			if kind == "external_link" {

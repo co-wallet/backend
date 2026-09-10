@@ -6,18 +6,27 @@ import (
 	"time"
 )
 
+type importMemberResponse struct {
+	UserID         string  `json:"user_id"`
+	Username       string  `json:"username"`
+	DefaultShare   float64 `json:"default_share"`
+	InitialBalance string  `json:"initial_balance"`
+	FinalBalance   string  `json:"final_balance"`
+}
 type accountResponse struct {
-	SourceID           string            `json:"source_id"`
-	Name               string            `json:"name"`
-	Currency           string            `json:"currency"`
-	Kind               model.AccountKind `json:"kind"`
-	Icon               string            `json:"icon"`
-	SourceIcon         int64             `json:"source_icon"`
-	InitialBalance     string            `json:"initial_balance"`
-	InitialBalanceDate time.Time         `json:"initial_balance_date"`
-	FinalBalance       string            `json:"final_balance"`
-	IncludedInTotal    bool              `json:"source_included_in_total"`
-	DisabledAt         *time.Time        `json:"source_disabled_at"`
+	AccessMode         model.AccountAccessMode `json:"access_mode"`
+	Members            []importMemberResponse  `json:"members"`
+	SourceID           string                  `json:"source_id"`
+	Name               string                  `json:"name"`
+	Currency           string                  `json:"currency"`
+	Kind               model.AccountKind       `json:"kind"`
+	Icon               string                  `json:"icon"`
+	SourceIcon         int64                   `json:"source_icon"`
+	InitialBalance     string                  `json:"initial_balance"`
+	InitialBalanceDate time.Time               `json:"initial_balance_date"`
+	FinalBalance       string                  `json:"final_balance"`
+	IncludedInTotal    bool                    `json:"source_included_in_total"`
+	DisabledAt         *time.Time              `json:"source_disabled_at"`
 }
 type categoryResponse struct {
 	SourceID   string     `json:"source_id"`
@@ -87,7 +96,11 @@ func toPreview(p model.ImportPreview) previewResponse {
 	seen := map[string]bool{}
 	for i, a := range p.Report.Accounts {
 		options := p.Accounts[i]
-		r.Accounts = append(r.Accounts, accountResponse{a.ID, a.Name, a.Currency, options.Kind, options.Icon, a.Icon, a.InitialBalance.String(), a.CreatedAt, options.Balance, a.IncludedInTotal, a.DisabledAt})
+		members := make([]importMemberResponse, 0, len(options.Members))
+		for _, m := range options.Members {
+			members = append(members, importMemberResponse{m.UserID, m.Username, m.DefaultShare, m.InitialBalance, m.FinalBalance})
+		}
+		r.Accounts = append(r.Accounts, accountResponse{options.AccessMode, members, a.ID, a.Name, a.Currency, options.Kind, options.Icon, a.Icon, a.InitialBalance.String(), a.CreatedAt, options.Balance, a.IncludedInTotal, a.DisabledAt})
 		if !seen[a.Currency] {
 			r.Currencies = append(r.Currencies, a.Currency)
 			seen[a.Currency] = true

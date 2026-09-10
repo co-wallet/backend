@@ -22,7 +22,7 @@ import (
 type importService interface {
 	Availability(context.Context, string) (model.ImportAvailability, error)
 	Preview(context.Context, string, io.Reader, model.ImportMode) (model.ImportPreview, error)
-	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string, map[string]string) (model.ImportPreview, error)
+	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string, map[string]string, map[string]model.ImportAccountAccess) (model.ImportPreview, error)
 	Confirm(context.Context, string, string, bool, bool) (model.ImportResult, error)
 }
 type Handler struct{ service importService }
@@ -65,7 +65,16 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	httputil.JSONResponse(w, toPreview(p), http.StatusCreated)
 }
 
+type memberRequest struct {
+	Username     string  `json:"username"`
+	DefaultShare float64 `json:"default_share"`
+}
+type accessRequest struct {
+	AccessMode model.AccountAccessMode `json:"access_mode"`
+	Members    []memberRequest         `json:"members"`
+}
 type optionsRequest struct {
+	AccountAccess map[string]accessRequest     `json:"account_access"`
 	AccountIcons  map[string]string            `json:"account_icons"`
 	AccountKinds  map[string]model.AccountKind `json:"account_kinds"`
 	CategoryIcons map[string]string            `json:"category_icons"`
@@ -93,7 +102,15 @@ func (h *Handler) Configure(w http.ResponseWriter, r *http.Request) {
 		respondError(w, err)
 		return
 	}
-	p, err := h.service.Configure(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "previewID"), req.AccountKinds, req.CategoryIcons, req.AccountIcons)
+	access := make(map[string]model.ImportAccountAccess, len(req.AccountAccess))
+	for id, config := range req.AccountAccess {
+		members := make([]model.CreateAccountMemberReq, len(config.Members))
+		for i, m := range config.Members {
+			members[i] = model.CreateAccountMemberReq{Username: m.Username, DefaultShare: m.DefaultShare}
+		}
+		access[id] = model.ImportAccountAccess{AccessMode: config.AccessMode, Members: members}
+	}
+	p, err := h.service.Configure(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "previewID"), req.AccountKinds, req.CategoryIcons, req.AccountIcons, access)
 	if err != nil {
 		respondError(w, err)
 		return

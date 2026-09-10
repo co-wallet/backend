@@ -100,6 +100,21 @@ func (mr *MockimportRepoMockRecorder) DeleteReplacement(arg0, arg1 any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteReplacement", reflect.TypeOf((*MockimportRepo)(nil).DeleteReplacement), arg0, arg1)
 }
 
+// GetByUsername mocks base method.
+func (m *MockimportRepo) GetByUsername(arg0 context.Context, arg1 string) (model.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByUsername", arg0, arg1)
+	ret0, _ := ret[0].(model.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByUsername indicates an expected call of GetByUsername.
+func (mr *MockimportRepoMockRecorder) GetByUsername(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByUsername", reflect.TypeOf((*MockimportRepo)(nil).GetByUsername), arg0, arg1)
+}
+
 // LockReplacement mocks base method.
 func (m *MockimportRepo) LockReplacement(arg0 context.Context) error {
 	m.ctrl.T.Helper()

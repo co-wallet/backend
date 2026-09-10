@@ -75,7 +75,7 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	if req.AccessMode == model.AccountAccessModeShared && req.AcceptTransfers {
 		return model.Account{}, fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
 	}
-	members, err := s.creationMembers(ctx, ownerID, req)
+	members, err := creationMembers(ctx, s.users, ownerID, req)
 	if err != nil {
 		return model.Account{}, err
 	}
@@ -169,7 +169,7 @@ func immutableAccountError() error {
 }
 
 // Resolve and validate the complete configuration before any database writes.
-func (s *AccountService) creationMembers(ctx context.Context, ownerID string, req model.CreateAccountReq) ([]model.AccountMember, error) {
+func creationMembers(ctx context.Context, users accountUserRepo, ownerID string, req model.CreateAccountReq) ([]model.AccountMember, error) {
 	if !req.AccessMode.IsValid() {
 		return nil, fmt.Errorf("invalid account access mode: %w", apperr.ErrValidation)
 	}
@@ -192,7 +192,7 @@ func (s *AccountService) creationMembers(ctx context.Context, ownerID string, re
 		if username == "" {
 			return nil, fmt.Errorf("member username is required: %w", apperr.ErrValidation)
 		}
-		user, err := s.users.GetByUsername(ctx, username)
+		user, err := users.GetByUsername(ctx, username)
 		if err != nil {
 			if errors.Is(err, apperr.ErrNotFound) {
 				return nil, fmt.Errorf("member %q not found: %w", username, apperr.ErrValidation)
