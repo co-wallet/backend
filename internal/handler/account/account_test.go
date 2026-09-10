@@ -179,20 +179,13 @@ func (s *AccountHandlerSuite) TestUpdate_Success() {
 	s.Equal(http.StatusOK, rec.Code)
 }
 
-func (s *AccountHandlerSuite) TestUpdate_PassesRequestedAccessMode() {
-	s.svc.EXPECT().
-		UpdateAccount(gomock.Any(), "u1", "a1", gomock.Any()).
-		DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateAccountReq) (model.Account, error) {
-			s.Require().NotNil(req.AccessMode)
-			s.Equal(model.AccountAccessModeShared, *req.AccessMode)
-			return model.Account{ID: "a1", AccessMode: model.AccountAccessModeShared}, nil
-		})
-
-	body := `{"accessMode":"shared"}`
-	req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
-	rec := httptest.NewRecorder()
-	s.h.Update(rec, req)
-	s.Equal(http.StatusOK, rec.Code)
+func (s *AccountHandlerSuite) TestUpdate_RejectsConfigurationFields() {
+	for _, body := range []string{`{"accessMode":"shared"}`, `{"members":[]}`, `{"ownerId":"other"}`, `{"defaultShare":0.5}`} {
+		req := withAccountParam(withUser(httptest.NewRequest(http.MethodPatch, "/accounts/a1", strings.NewReader(body)), "u1"), "a1")
+		rec := httptest.NewRecorder()
+		s.h.Update(rec, req)
+		s.Equal(http.StatusBadRequest, rec.Code)
+	}
 }
 
 func (s *AccountHandlerSuite) TestUpdate_RejectsKindChange() {

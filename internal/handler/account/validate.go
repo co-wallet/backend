@@ -9,6 +9,7 @@ import (
 )
 
 type createAccountReq struct {
+	Members            []addMemberReq          `json:"members"`
 	AcceptTransfers    bool                    `json:"acceptTransfers"`
 	Name               string                  `json:"name"`
 	AccessMode         model.AccountAccessMode `json:"accessMode"`
@@ -52,7 +53,12 @@ func (r *createAccountReq) validate() error {
 
 func (r *createAccountReq) toModelReq() model.CreateAccountReq {
 	ibd, _ := time.Parse("2006-01-02", r.InitialBalanceDate)
+	members := make([]model.CreateAccountMemberReq, len(r.Members))
+	for i, member := range r.Members {
+		members[i] = model.CreateAccountMemberReq{Username: member.Username, DefaultShare: member.DefaultShare}
+	}
 	return model.CreateAccountReq{
+		Members:            members,
 		Name:               r.Name,
 		AcceptTransfers:    r.AcceptTransfers,
 		AccessMode:         r.AccessMode,
@@ -81,8 +87,8 @@ func (r *updateAccountReq) validate() error {
 			return fmt.Errorf("name cannot be empty")
 		}
 	}
-	if r.AccessMode != nil && !r.AccessMode.IsValid() {
-		return fmt.Errorf("accessMode must be 'personal' or 'shared'")
+	if r.AccessMode != nil {
+		return fmt.Errorf("accessMode cannot be changed after account creation")
 	}
 	if r.Kind != nil {
 		return fmt.Errorf("kind cannot be changed after account creation")
