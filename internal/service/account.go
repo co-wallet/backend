@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -73,6 +75,10 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	if req.AccessMode == model.AccountAccessModeShared && req.AcceptTransfers {
 		return model.Account{}, fmt.Errorf("shared accounts accept transfers only from members: %w", apperr.ErrValidation)
 	}
+	members, err := s.creationMembers(ctx, ownerID, req)
+	if err != nil {
+		return model.Account{}, err
+	}
 	a := model.Account{
 		OwnerID:            ownerID,
 		AcceptTransfers:    req.AcceptTransfers,
@@ -86,20 +92,17 @@ func (s *AccountService) CreateAccount(ctx context.Context, ownerID string, req 
 	}
 
 	var created model.Account
-	err := s.withTx(ctx, func(accountsTx accountRepo) error {
+	err = s.withTx(ctx, func(accountsTx accountRepo) error {
 		var innerErr error
 		created, innerErr = accountsTx.Create(ctx, a)
 		if innerErr != nil {
 			return fmt.Errorf("create account: %w", innerErr)
 		}
 
-		if created.AccessMode == model.AccountAccessModeShared {
-			if innerErr = accountsTx.AddMember(ctx, model.AccountMember{
-				AccountID:    created.ID,
-				UserID:       ownerID,
-				DefaultShare: 1.0,
-			}); innerErr != nil {
-				return fmt.Errorf("add owner as member: %w", innerErr)
+		for _, member := range members {
+			member.AccountID = created.ID
+			if innerErr = accountsTx.AddMember(ctx, member); innerErr != nil {
+				return fmt.Errorf("add account member: %w", innerErr)
 			}
 		}
 		return nil
@@ -125,17 +128,8 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			a.AcceptTransfers = *req.AcceptTransfers
 		}
 
-		accessModeChanged := req.AccessMode != nil && *req.AccessMode != a.AccessMode
-		if accessModeChanged {
-			if requesterID != a.OwnerID {
-				return fmt.Errorf("only the owner can change account access mode: %w", apperr.ErrForbidden)
-			}
-			if *req.AccessMode == model.AccountAccessModePersonal {
-				if err = ensureSharedAccountCanBecomePersonal(ctx, accountsTx, a); err != nil {
-					return err
-				}
-			}
-			a.AccessMode = *req.AccessMode
+		if req.AccessMode != nil {
+			return immutableAccountError()
 		}
 
 		if a.AccessMode == model.AccountAccessModeShared {
@@ -162,22 +156,6 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 			return fmt.Errorf("update account: %w", err)
 		}
 
-		if !accessModeChanged {
-			return nil
-		}
-		if updated.AccessMode == model.AccountAccessModeShared {
-			if err = accountsTx.AddMember(ctx, model.AccountMember{
-				AccountID:    updated.ID,
-				UserID:       updated.OwnerID,
-				DefaultShare: 1,
-			}); err != nil {
-				return fmt.Errorf("add owner as member: %w", err)
-			}
-			return nil
-		}
-		if err = accountsTx.RemoveMember(ctx, updated.ID, updated.OwnerID); err != nil {
-			return fmt.Errorf("remove owner membership: %w", err)
-		}
 		return nil
 	})
 	if err != nil {
@@ -186,25 +164,55 @@ func (s *AccountService) UpdateAccount(ctx context.Context, requesterID, account
 	return updated, nil
 }
 
-func ensureSharedAccountCanBecomePersonal(ctx context.Context, accounts accountRepo, a model.Account) error {
-	members, err := accounts.GetMembers(ctx, a.ID)
-	if err != nil {
-		return fmt.Errorf("get account members: %w", err)
-	}
-	for _, member := range members {
-		if member.UserID != a.OwnerID {
-			return fmt.Errorf("remove other members before changing account type: %w", apperr.ErrConflict)
-		}
-	}
+func immutableAccountError() error {
+	return fmt.Errorf("account mode, members and shares are immutable; create a new account and transfer funds: %w", apperr.ErrConflict)
+}
 
-	hasTransactions, err := accounts.HasTransactions(ctx, a.ID)
-	if err != nil {
-		return fmt.Errorf("check account transactions: %w", err)
+// Resolve and validate the complete configuration before any database writes.
+func (s *AccountService) creationMembers(ctx context.Context, ownerID string, req model.CreateAccountReq) ([]model.AccountMember, error) {
+	if !req.AccessMode.IsValid() {
+		return nil, fmt.Errorf("invalid account access mode: %w", apperr.ErrValidation)
 	}
-	if hasTransactions {
-		return fmt.Errorf("a shared account with transactions cannot become personal: %w", apperr.ErrConflict)
+	if req.AccessMode == model.AccountAccessModePersonal && len(req.Members) == 0 {
+		return []model.AccountMember{{UserID: ownerID, DefaultShare: 1}}, nil
 	}
-	return nil
+	if len(req.Members) == 0 {
+		return nil, fmt.Errorf("members including the owner are required: %w", apperr.ErrValidation)
+	}
+	members := make([]model.AccountMember, 0, len(req.Members))
+	seen := make(map[string]bool)
+	total := 0
+	for _, input := range req.Members {
+		share := input.DefaultShare
+		units := math.Round(share * 10000)
+		if math.IsNaN(share) || math.IsInf(share, 0) || share < 0 || share > 1 || math.Abs(share*10000-units) > 1e-8 {
+			return nil, fmt.Errorf("shares must be between 0 and 1 with at most four decimal places: %w", apperr.ErrValidation)
+		}
+		username := strings.TrimSpace(input.Username)
+		if username == "" {
+			return nil, fmt.Errorf("member username is required: %w", apperr.ErrValidation)
+		}
+		user, err := s.users.GetByUsername(ctx, username)
+		if err != nil {
+			if errors.Is(err, apperr.ErrNotFound) {
+				return nil, fmt.Errorf("member %q not found: %w", username, apperr.ErrValidation)
+			}
+			return nil, fmt.Errorf("find account member: %w", err)
+		}
+		if !user.IsActive || seen[user.ID] {
+			return nil, fmt.Errorf("members must be active and unique: %w", apperr.ErrValidation)
+		}
+		seen[user.ID] = true
+		total += int(units)
+		members = append(members, model.AccountMember{UserID: user.ID, Username: user.Username, DefaultShare: share})
+	}
+	if !seen[ownerID] || total != 10000 {
+		return nil, fmt.Errorf("members must include the owner and shares must sum to 1: %w", apperr.ErrValidation)
+	}
+	if req.AccessMode == model.AccountAccessModePersonal && len(members) != 1 {
+		return nil, fmt.Errorf("personal accounts belong only to their owner: %w", apperr.ErrValidation)
+	}
+	return members, nil
 }
 
 func (s *AccountService) DeleteAccount(ctx context.Context, requesterID, accountID string) error {
@@ -218,50 +226,17 @@ func (s *AccountService) DeleteAccount(ctx context.Context, requesterID, account
 	return s.accounts.SoftDelete(ctx, accountID)
 }
 
-func (s *AccountService) AddMember(ctx context.Context, accountID, username string, share float64) ([]model.AccountMember, error) {
-	u, err := s.users.GetByUsername(ctx, username)
-	if err != nil {
-		return nil, fmt.Errorf("user %q: %w", username, apperr.ErrNotFound)
-	}
-
-	if err := s.accounts.AddMember(ctx, model.AccountMember{
-		AccountID:    accountID,
-		UserID:       u.ID,
-		DefaultShare: share,
-	}); err != nil {
-		return nil, fmt.Errorf("add member: %w", err)
-	}
-
-	members, err := s.accounts.GetMembers(ctx, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch members after add: %w", err)
-	}
-	return members, nil
+// Legacy mutation endpoints remain callable but can no longer alter history.
+func (s *AccountService) AddMember(_ context.Context, _, _ string, _ float64) ([]model.AccountMember, error) {
+	return nil, immutableAccountError()
 }
 
-func (s *AccountService) UpdateMember(ctx context.Context, accountID, memberUserID string, share float64) ([]model.AccountMember, error) {
-	if err := s.accounts.UpdateMemberShare(ctx, accountID, memberUserID, share); err != nil {
-		return nil, fmt.Errorf("update member share: %w", err)
-	}
-	members, err := s.accounts.GetMembers(ctx, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch members after update: %w", err)
-	}
-	return members, nil
+func (s *AccountService) UpdateMember(_ context.Context, _, _ string, _ float64) ([]model.AccountMember, error) {
+	return nil, immutableAccountError()
 }
 
-func (s *AccountService) RemoveMember(ctx context.Context, requesterID, accountID, memberUserID string) error {
-	a, err := s.accounts.GetByID(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	if a.OwnerID != requesterID {
-		return fmt.Errorf("only the owner can remove members: %w", apperr.ErrForbidden)
-	}
-	if memberUserID == a.OwnerID {
-		return fmt.Errorf("cannot remove the account owner: %w", apperr.ErrForbidden)
-	}
-	return s.accounts.RemoveMember(ctx, accountID, memberUserID)
+func (s *AccountService) RemoveMember(_ context.Context, _, _, _ string) error {
+	return immutableAccountError()
 }
 
 func (s *AccountService) GetMembers(ctx context.Context, accountID string) ([]model.AccountMember, error) {

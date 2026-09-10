@@ -94,7 +94,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	requesterID := middleware.UserIDFromCtx(r.Context())
 
 	var req updateAccountReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}

@@ -159,14 +159,14 @@ func TestUpdateAccountReq_Validate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "valid shared access mode",
+			name:    "shared access mode is immutable",
 			req:     updateAccountReq{AccessMode: ptr.To(model.AccountAccessModeShared)},
-			wantErr: "",
+			wantErr: "accessMode cannot be changed after account creation",
 		},
 		{
 			name:    "invalid access mode",
 			req:     updateAccountReq{AccessMode: ptr.To(model.AccountAccessMode("credit"))},
-			wantErr: "accessMode must be 'personal' or 'shared'",
+			wantErr: "accessMode cannot be changed after account creation",
 		},
 		{
 			name:    "kind change is forbidden",

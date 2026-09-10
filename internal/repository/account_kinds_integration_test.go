@@ -26,15 +26,11 @@ func TestAccountKindsCreationBalancesAndFilters(t *testing.T) {
 	kinds := []model.AccountKind{model.AccountKindSpending, model.AccountKindSavings, model.AccountKindDeposit, model.AccountKindSavingsAccount, model.AccountKindInvestment}
 	for _, kind := range kinds {
 		t.Run(string(kind), func(t *testing.T) {
-			body, err := json.Marshal(map[string]any{"name": string(kind), "kind": kind, "accessMode": "shared", "currency": "USD", "initialBalance": 100, "initialBalanceDate": time.Now().Format("2006-01-02")})
+			body, err := json.Marshal(map[string]any{"name": string(kind), "kind": kind, "accessMode": "shared", "members": []map[string]any{{"username": "importer", "defaultShare": 0.25}, {"username": "other", "defaultShare": 0.75}}, "currency": "USD", "initialBalance": 100, "initialBalanceDate": time.Now().Format("2006-01-02")})
 			require.NoError(t, err)
 			var created accounthandler.AccountResponse
 			importRequest(t, h, token, "POST", "/api/accounts", body, 201, &created)
 			require.Equal(t, string(kind), created.Kind)
-			_, err = f.pool.Exec(ctx, `UPDATE account_members SET default_share=0.25 WHERE account_id=$1`, created.ID)
-			require.NoError(t, err)
-			_, err = f.pool.Exec(ctx, `INSERT INTO account_members(account_id,user_id,default_share) VALUES($1,$2,0.75)`, created.ID, f.other)
-			require.NoError(t, err)
 			tx, err := txs.Create(ctx, model.Transaction{AccountID: created.ID, Type: model.TransactionTypeExpense, Amount: 40, Currency: "USD", Date: time.Now(), CreatedBy: f.user, Shares: []model.TransactionShare{{UserID: f.user, Amount: 5, IsCustom: true}, {UserID: f.other, Amount: 35, IsCustom: true}}})
 			require.NoError(t, err)
 			balances, err := accounts.ListBalancesByUser(ctx, f.user, "USD")

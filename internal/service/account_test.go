@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -45,7 +46,7 @@ func (s *AccountServiceSuite) SetupTest() {
 	}
 }
 
-func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
+func (s *AccountServiceSuite) TestCreateAccount_Personal_OwnerHasFullShare() {
 	req := model.CreateAccountReq{
 		Name:       "Wallet",
 		AccessMode: model.AccountAccessModePersonal,
@@ -61,7 +62,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 			a.ID = "acc-1"
 			return a, nil
 		})
-	// Personal accounts must NOT trigger AddMember — no expectation means 0 calls expected
+	s.repo.EXPECT().AddMember(gomock.Any(), model.AccountMember{AccountID: "acc-1", UserID: "owner-1", DefaultShare: 1}).Return(nil)
 
 	acc, err := s.svc.CreateAccount(context.Background(), "owner-1", req)
 	s.NoError(err)
@@ -71,11 +72,13 @@ func (s *AccountServiceSuite) TestCreateAccount_Personal_NoMemberAdded() {
 
 func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 	req := model.CreateAccountReq{
+		Members:    []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 1}},
 		Name:       "Family",
 		AccessMode: model.AccountAccessModeShared,
 		Kind:       model.AccountKindSpending,
 		Currency:   "USD",
 	}
+	s.users.EXPECT().GetByUsername(gomock.Any(), "owner").Return(model.User{ID: "owner-1", IsActive: true}, nil)
 	gomock.InOrder(
 		s.repo.EXPECT().
 			Create(gomock.Any(), gomock.Any()).
@@ -100,7 +103,7 @@ func (s *AccountServiceSuite) TestCreateAccount_Shared_AddsOwnerAsMember() {
 }
 
 func (s *AccountServiceSuite) TestCreateAccount_AddMemberFailureRollsBack() {
-	req := model.CreateAccountReq{Name: "F", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindSpending, Currency: "USD"}
+	req := model.CreateAccountReq{Name: "F", AccessMode: model.AccountAccessModePersonal, Kind: model.AccountKindSpending, Currency: "USD"}
 	gomock.InOrder(
 		s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Account{ID: "a", AccessMode: model.AccountAccessModeShared}, nil),
 		s.repo.EXPECT().AddMember(gomock.Any(), gomock.Any()).Return(errors.New("dup")),
@@ -132,106 +135,18 @@ func (s *AccountServiceSuite) TestUpdateAccount_AppliesPartialPatch() {
 	s.NoError(err)
 }
 
-func (s *AccountServiceSuite) TestUpdateAccount_PersonalToSharedAddsOwner() {
-	existing := model.Account{
-		ID: "acc-1", OwnerID: "owner-1", Name: "Wallet", AccessMode: model.AccountAccessModePersonal,
+func (s *AccountServiceSuite) TestConfigurationChangesRejected() {
+	for _, mode := range []model.AccountAccessMode{model.AccountAccessModePersonal, model.AccountAccessModeShared} {
+		s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", AccessMode: mode}, nil)
+		_, err := s.svc.UpdateAccount(context.Background(), "owner", "a", model.UpdateAccountReq{AccessMode: ptr.To(mode)})
+		s.ErrorIs(err, apperr.ErrConflict)
 	}
-	gomock.InOrder(
-		s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil),
-		s.repo.EXPECT().
-			Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
-				s.Equal(model.AccountAccessModeShared, a.AccessMode)
-				return a, nil
-			}),
-		s.repo.EXPECT().
-			AddMember(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, member model.AccountMember) error {
-				s.Equal("acc-1", member.AccountID)
-				s.Equal("owner-1", member.UserID)
-				s.Equal(1.0, member.DefaultShare)
-				return nil
-			}),
-	)
-
-	updated, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		AccessMode: ptr.To(model.AccountAccessModeShared),
-	})
-
-	s.NoError(err)
-	s.Equal(model.AccountAccessModeShared, updated.AccessMode)
-	s.True(s.txCommitCh)
-}
-
-func (s *AccountServiceSuite) TestUpdateAccount_AccessModeChangeByNonOwnerForbidden() {
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(model.Account{
-		ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModePersonal,
-	}, nil)
-
-	_, err := s.svc.UpdateAccount(context.Background(), "member-1", "acc-1", model.UpdateAccountReq{
-		AccessMode: ptr.To(model.AccountAccessModeShared),
-	})
-
-	s.ErrorIs(err, apperr.ErrForbidden)
-	s.False(s.txCommitCh)
-}
-
-func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithOtherMembersConflicts() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil)
-	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
-		{AccountID: "acc-1", UserID: "owner-1"},
-		{AccountID: "acc-1", UserID: "member-1"},
-	}, nil)
-
-	_, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		AccessMode: ptr.To(model.AccountAccessModePersonal),
-	})
-
+	_, err := s.svc.AddMember(context.Background(), "a", "bob", 0.5)
 	s.ErrorIs(err, apperr.ErrConflict)
-	s.False(s.txCommitCh)
-}
-
-func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalWithTransactionsConflicts() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil)
-	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
-		{AccountID: "acc-1", UserID: "owner-1"},
-	}, nil)
-	s.repo.EXPECT().HasTransactions(gomock.Any(), "acc-1").Return(true, nil)
-
-	_, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		AccessMode: ptr.To(model.AccountAccessModePersonal),
-	})
-
+	_, err = s.svc.UpdateMember(context.Background(), "a", "bob", 0.5)
 	s.ErrorIs(err, apperr.ErrConflict)
+	s.ErrorIs(s.svc.RemoveMember(context.Background(), "owner", "a", "bob"), apperr.ErrConflict)
 	s.False(s.txCommitCh)
-}
-
-func (s *AccountServiceSuite) TestUpdateAccount_SharedToPersonalRemovesOwnerMembership() {
-	existing := model.Account{ID: "acc-1", OwnerID: "owner-1", AccessMode: model.AccountAccessModeShared}
-	gomock.InOrder(
-		s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(existing, nil),
-		s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
-			{AccountID: "acc-1", UserID: "owner-1"},
-		}, nil),
-		s.repo.EXPECT().HasTransactions(gomock.Any(), "acc-1").Return(false, nil),
-		s.repo.EXPECT().
-			Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, a model.Account) (model.Account, error) {
-				s.Equal(model.AccountAccessModePersonal, a.AccessMode)
-				return a, nil
-			}),
-		s.repo.EXPECT().RemoveMember(gomock.Any(), "acc-1", "owner-1").Return(nil),
-	)
-
-	updated, err := s.svc.UpdateAccount(context.Background(), "owner-1", "acc-1", model.UpdateAccountReq{
-		AccessMode: ptr.To(model.AccountAccessModePersonal),
-	})
-
-	s.NoError(err)
-	s.Equal(model.AccountAccessModePersonal, updated.AccessMode)
-	s.True(s.txCommitCh)
 }
 
 func (s *AccountServiceSuite) TestDeleteAccount_NotOwnerForbidden() {
@@ -247,67 +162,6 @@ func (s *AccountServiceSuite) TestDeleteAccount_OwnerSoftDeletes() {
 
 	err := s.svc.DeleteAccount(context.Background(), "owner-1", "acc-1")
 	s.NoError(err)
-}
-
-func (s *AccountServiceSuite) TestAddMember_UserNotFound() {
-	s.users.EXPECT().GetByUsername(gomock.Any(), "ghost").Return(model.User{}, errors.New("no user"))
-
-	_, err := s.svc.AddMember(context.Background(), "acc-1", "ghost", 0.5)
-	s.True(errors.Is(err, apperr.ErrNotFound))
-}
-
-func (s *AccountServiceSuite) TestAddMember_Success() {
-	s.users.EXPECT().GetByUsername(gomock.Any(), "bob").Return(model.User{ID: "bob-id"}, nil)
-	s.repo.EXPECT().
-		AddMember(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, m model.AccountMember) error {
-			s.Equal("acc-1", m.AccountID)
-			s.Equal("bob-id", m.UserID)
-			s.Equal(0.5, m.DefaultShare)
-			return nil
-		})
-	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
-		{AccountID: "acc-1", UserID: "owner", DefaultShare: 0.5},
-		{AccountID: "acc-1", UserID: "bob-id", DefaultShare: 0.5},
-	}, nil)
-
-	members, err := s.svc.AddMember(context.Background(), "acc-1", "bob", 0.5)
-	s.NoError(err)
-	s.Len(members, 2)
-}
-
-func (s *AccountServiceSuite) TestRemoveMember_NotOwnerForbidden() {
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(model.Account{ID: "acc-1", OwnerID: "owner-1"}, nil)
-
-	err := s.svc.RemoveMember(context.Background(), "requester", "acc-1", "bob")
-	s.True(errors.Is(err, apperr.ErrForbidden))
-}
-
-func (s *AccountServiceSuite) TestRemoveMember_CannotRemoveOwner() {
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(model.Account{ID: "acc-1", OwnerID: "owner-1"}, nil)
-
-	err := s.svc.RemoveMember(context.Background(), "owner-1", "acc-1", "owner-1")
-	s.True(errors.Is(err, apperr.ErrForbidden))
-}
-
-func (s *AccountServiceSuite) TestRemoveMember_OwnerRemovesOther() {
-	s.repo.EXPECT().GetByID(gomock.Any(), "acc-1").Return(model.Account{ID: "acc-1", OwnerID: "owner-1"}, nil)
-	s.repo.EXPECT().RemoveMember(gomock.Any(), "acc-1", "bob").Return(nil)
-
-	err := s.svc.RemoveMember(context.Background(), "owner-1", "acc-1", "bob")
-	s.NoError(err)
-}
-
-func (s *AccountServiceSuite) TestUpdateMember_RefetchesMembers() {
-	s.repo.EXPECT().UpdateMemberShare(gomock.Any(), "acc-1", "bob", 0.3).Return(nil)
-	s.repo.EXPECT().GetMembers(gomock.Any(), "acc-1").Return([]model.AccountMember{
-		{AccountID: "acc-1", UserID: "bob", DefaultShare: 0.3},
-	}, nil)
-
-	members, err := s.svc.UpdateMember(context.Background(), "acc-1", "bob", 0.3)
-	s.NoError(err)
-	s.Len(members, 1)
-	s.Equal(0.3, members[0].DefaultShare)
 }
 
 func (s *AccountServiceSuite) TestTransferAcceptanceOwnerOnly() {
@@ -339,4 +193,59 @@ func (s *AccountServiceSuite) TestSharedAccountCannotEnableExternalTransfers() {
 	s.repo.EXPECT().GetByID(gomock.Any(), "a").Return(model.Account{ID: "a", OwnerID: "owner", AccessMode: model.AccountAccessModeShared}, nil)
 	_, err = s.svc.UpdateAccount(context.Background(), "owner", "a", model.UpdateAccountReq{AcceptTransfers: ptr.To(true)})
 	s.ErrorIs(err, apperr.ErrValidation)
+}
+
+func (s *AccountServiceSuite) TestCreateSharedAccount_CompleteConfiguration() {
+	s.users.EXPECT().GetByUsername(gomock.Any(), "owner").Return(model.User{ID: "owner", Username: "owner", IsActive: true}, nil)
+	s.users.EXPECT().GetByUsername(gomock.Any(), "bob").Return(model.User{ID: "bob", Username: "bob", IsActive: true}, nil)
+	s.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Account{ID: "a", AccessMode: model.AccountAccessModeShared}, nil)
+	s.repo.EXPECT().AddMember(gomock.Any(), model.AccountMember{AccountID: "a", UserID: "owner", Username: "owner", DefaultShare: 0.3333}).Return(nil)
+	s.repo.EXPECT().AddMember(gomock.Any(), model.AccountMember{AccountID: "a", UserID: "bob", Username: "bob", DefaultShare: 0.6667}).Return(nil)
+	_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: model.AccountAccessModeShared, Members: []model.CreateAccountMemberReq{{Username: " owner ", DefaultShare: 0.3333}, {Username: "bob", DefaultShare: 0.6667}}})
+	s.NoError(err)
+	s.True(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestCreateAccount_InvalidConfigurations() {
+	cases := []struct {
+		name    string
+		mode    model.AccountAccessMode
+		members []model.CreateAccountMemberReq
+	}{
+		{"empty shared", model.AccountAccessModeShared, nil},
+		{"missing owner", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "bob", DefaultShare: 1}}},
+		{"duplicate", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 0.5}, {Username: "owner", DefaultShare: 0.5}}},
+		{"sum", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 0.9}}},
+		{"precision", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 0.99999}}},
+		{"negative", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: -0.1}}},
+		{"above one", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 1.1}}},
+		{"nan", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: math.NaN()}}},
+		{"infinite", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: math.Inf(1)}}},
+		{"empty username", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{DefaultShare: 1}}},
+		{"personal extra", model.AccountAccessModePersonal, []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 0.5}, {Username: "bob", DefaultShare: 0.5}}},
+		{"inactive", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "inactive", DefaultShare: 1}}},
+		{"unknown", model.AccountAccessModeShared, []model.CreateAccountMemberReq{{Username: "unknown", DefaultShare: 1}}},
+	}
+	for _, tt := range cases {
+		s.Run(tt.name, func() {
+			s.SetupTest()
+			s.users.EXPECT().GetByUsername(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, username string) (model.User, error) {
+				if username == "unknown" {
+					return model.User{}, apperr.ErrNotFound
+				}
+				return model.User{ID: username, Username: username, IsActive: username != "inactive"}, nil
+			}).AnyTimes()
+			_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: tt.mode, Members: tt.members})
+			s.ErrorIs(err, apperr.ErrValidation)
+			s.False(s.txCommitCh)
+		})
+	}
+}
+
+func (s *AccountServiceSuite) TestCreateAccount_UserLookupFailure() {
+	failure := errors.New("database unavailable")
+	s.users.EXPECT().GetByUsername(gomock.Any(), "owner").Return(model.User{}, failure)
+	_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: model.AccountAccessModeShared, Members: []model.CreateAccountMemberReq{{Username: "owner", DefaultShare: 1}}})
+	s.ErrorIs(err, failure)
+	s.False(s.txCommitCh)
 }

@@ -86,14 +86,14 @@ func TestExternalTransfers(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM transactions`).Scan(&partial))
 	require.Zero(t, partial)
 	// Even the owner cannot send from a shared source to somebody else's account.
-	src.AccessMode = model.AccountAccessModeShared
-	_, err = accounts.Update(ctx, src)
+	sharedSource := src
+	sharedSource.AccessMode = model.AccountAccessModeShared
+	sharedSource, err = accounts.Create(ctx, sharedSource)
 	require.NoError(t, err)
-	_, err = svc.Create(ctx, sender, req)
+	sharedReq := req
+	sharedReq.AccountID = sharedSource.ID
+	_, err = svc.Create(ctx, sender, sharedReq)
 	require.ErrorIs(t, err, apperr.ErrForbidden)
-	src.AccessMode = model.AccountAccessModePersonal
-	_, err = accounts.Update(ctx, src)
-	require.NoError(t, err)
 	created, err := svc.Create(ctx, sender, req)
 	require.NoError(t, err)
 	require.Equal(t, src.ID, created.Account.ID)
@@ -139,8 +139,10 @@ func TestExternalTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 180.0, balances[dst.ID].BalanceNative)
 	// Shared destinations are hidden externally and accept only participant transfers.
+	originalDestination := dst
 	dst.AccessMode = model.AccountAccessModeShared
-	_, err = accounts.Update(ctx, dst)
+	dst, err = accounts.Create(ctx, dst)
+	req.ToAccountID = ptr.To(dst.ID)
 	require.NoError(t, err)
 	require.NoError(t, accounts.AddMember(ctx, model.AccountMember{AccountID: dst.ID, UserID: recipient, DefaultShare: 0.1}))
 	require.NoError(t, accounts.AddMember(ctx, model.AccountMember{AccountID: dst.ID, UserID: member, DefaultShare: 0.9}))
@@ -167,6 +169,8 @@ func TestExternalTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0.0001, tinyView.Amount)
 	require.NoError(t, svc.Delete(ctx, sender, tiny.ID))
+	dst = originalDestination
+	req.ToAccountID = ptr.To(dst.ID)
 	require.NoError(t, accounts.SoftDelete(ctx, dst.ID))
 	historical, err := txRepo.GetByID(ctx, created.ID)
 	require.NoError(t, err)

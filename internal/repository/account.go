@@ -100,12 +100,12 @@ func (r *AccountRepository) Create(ctx context.Context, a model.Account) (model.
 func (r *AccountRepository) Update(ctx context.Context, a model.Account) (model.Account, error) {
 	err := r.db.QueryRow(ctx, `
 		UPDATE accounts
-		SET name = $1, access_mode = $2, icon = $3,
-		    initial_balance = $4, initial_balance_date = $5,
-		    updated_at = now(), accept_transfers = $7
-		WHERE id = $6 AND deleted_at IS NULL
+		SET name = $1, icon = $2,
+		    initial_balance = $3, initial_balance_date = $4,
+		    updated_at = now(), accept_transfers = $6
+		WHERE id = $5 AND deleted_at IS NULL
 		RETURNING updated_at`,
-		a.Name, a.AccessMode, a.Icon, a.InitialBalance, a.InitialBalanceDate, a.ID, a.AcceptTransfers,
+		a.Name, a.Icon, a.InitialBalance, a.InitialBalanceDate, a.ID, a.AcceptTransfers,
 	).Scan(&a.UpdatedAt)
 	return a, err
 }

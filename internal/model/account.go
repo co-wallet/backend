@@ -65,7 +65,13 @@ type AccountBalance struct {
 
 // Service-level DTOs
 
+type CreateAccountMemberReq struct {
+	Username     string
+	DefaultShare float64
+}
+
 type CreateAccountReq struct {
+	Members            []CreateAccountMemberReq
 	AcceptTransfers    bool
 	Name               string
 	AccessMode         AccountAccessMode
