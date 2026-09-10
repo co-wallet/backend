@@ -86,10 +86,11 @@ type apiPreview struct {
 	RequiresExclusions bool           `json:"requires_exclusion_confirmation"`
 	Counts             map[string]int `json:"counts"`
 	Accounts           []struct {
-		ID      string `json:"source_id"`
-		Kind    string `json:"kind"`
-		Name    string `json:"name"`
-		Balance string `json:"final_balance"`
+		ID         string `json:"source_id"`
+		Kind       string `json:"kind"`
+		Name       string `json:"name"`
+		SourceName string `json:"source_name"`
+		Balance    string `json:"final_balance"`
 	} `json:"accounts"`
 	Exclusions []struct {
 		ID string `json:"source_id"`
@@ -223,8 +224,12 @@ func testMonefyAPIEndToEnd(t *testing.T, override bool) {
 		Available bool `json:"available"`
 	}
 	importRequest(t, h, token, "GET", "/api/imports/monefy/availability", nil, 200, &availability)
-	require.False(t, availability.Available)
-	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 409, nil)
+	require.True(t, availability.Available)
+	var added apiPreview
+	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 201, &added)
+	for _, a := range added.Accounts {
+		require.Equal(t, a.SourceName+" (1)", a.Name)
+	}
 	after, err := os.ReadFile(f.source)
 	require.NoError(t, err)
 	require.Equal(t, sha256.Sum256(source), sha256.Sum256(after))
@@ -366,7 +371,7 @@ func TestMonefyReplacementAPIContract(t *testing.T) {
 			} `json:"accounts"`
 		} `json:"replacement"`
 	}
-	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 409, nil)
+	importRequest(t, h, token, "POST", "/api/imports/monefy/preview", source, 201, nil)
 	importRequest(t, h, token, "POST", "/api/imports/monefy/preview?mode=invalid", source, 400, nil)
 	importRequest(t, h, token, "POST", "/api/imports/monefy/preview?mode=replace", source, 201, &p)
 	require.Equal(t, "replace", p.Mode)

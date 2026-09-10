@@ -39,8 +39,8 @@ func (s *ImportSharesSuite) TestConfigureSharedValidationAndRounding() {
 			svc := &ImportService{repo: repo, store: store}
 			p := model.ImportPreview{ID: s.id, UserID: s.user, Report: monefy.Report{Accounts: []monefy.Account{{ID: "a", InitialBalance: 1000}}, Transactions: []monefy.Transaction{{ID: "t", AccountID: "a", Type: "expense", Amount: -1}}}}
 			store.EXPECT().Load(s.user, s.id).Return(p, nil)
-			repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 			repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
+			repo.EXPECT().AccountNames(gomock.Any(), s.user, false).Return(nil, nil)
 			repo.EXPECT().GetByUsername(gomock.Any(), "owner").Return(model.User{ID: s.user, Username: "owner", IsActive: true}, nil).AnyTimes()
 			repo.EXPECT().GetByUsername(gomock.Any(), "other").Return(model.User{ID: "other-id", Username: "other", IsActive: !tc.inactive}, nil).AnyTimes()
 			repo.EXPECT().GetByUsername(gomock.Any(), "missing").Return(model.User{}, apperr.ErrNotFound).AnyTimes()
@@ -73,7 +73,6 @@ func (s *ImportSharesSuite) TestConfigureSharedValidationAndRounding() {
 func (s *ImportSharesSuite) TestConfirmationRejectsUnavailableParticipantBeforeWrite() {
 	p := model.ImportPreview{Categories: []model.ImportCategory{}, Accounts: []model.ImportAccount{{AccessMode: "shared", Members: []model.ImportMember{{UserID: "other", Username: "other", DefaultShare: 1}}}}}
 	s.confirmStart(p)
-	s.repo.EXPECT().Availability(gomock.Any(), s.user).Return(model.ImportAvailability{}, nil)
 	s.repo.EXPECT().Catalog(gomock.Any(), true).Return(nil, nil)
 	s.repo.EXPECT().Currencies(gomock.Any()).Return(nil, nil)
 	s.repo.EXPECT().GetByUsername(gomock.Any(), "other").Return(model.User{ID: "other", IsActive: false}, nil)

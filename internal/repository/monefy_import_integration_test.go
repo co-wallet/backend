@@ -200,11 +200,10 @@ func TestMonefyExclusionsAndStaleCatalog(t *testing.T) {
 	require.Zero(t, count)
 }
 
-func TestMonefyEmptinessCannotBeHidden(t *testing.T) {
+func TestMonefyExistingDataAllowsImport(t *testing.T) {
 	for _, kind := range []string{"deleted_account", "hidden_category", "membership", "transaction_share"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newImportFixture(t)
-			p := f.configured(t)
 			ctx := context.Background()
 			var err error
 			switch kind {
@@ -220,9 +219,10 @@ func TestMonefyEmptinessCannotBeHidden(t *testing.T) {
 			require.NoError(t, err)
 			a, err := f.svc.Availability(ctx, f.user)
 			require.NoError(t, err)
-			require.NotEmpty(t, a.Reasons)
+			require.Empty(t, a.Reasons)
+			p := f.configured(t)
 			_, err = f.svc.Confirm(ctx, f.user, p.ID, false, false)
-			require.ErrorContains(t, err, "account_not_empty")
+			require.NoError(t, err)
 		})
 	}
 }
@@ -276,7 +276,7 @@ func TestMonefyLocksOrdinaryWrites(t *testing.T) {
 			require.NoError(t, ordinary.Commit(ctx))
 			select {
 			case e := <-done:
-				require.ErrorContains(t, e, "account_not_empty")
+				require.NoError(t, e)
 			case <-time.After(5 * time.Second):
 				t.Fatal("confirm did not finish")
 			}
@@ -312,4 +312,83 @@ func TestMonefyCategoryIconsPersistOnImport(t *testing.T) {
 	var nonPreset int
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE owner_id=$1 AND icon NOT LIKE 'preset:%'`, f.user).Scan(&nonPreset))
 	require.Zero(t, nonPreset)
+}
+
+func TestMonefyAppendKeepsHistoryAndPersistsSuggestedNames(t *testing.T) {
+	f := newImportFixture(t)
+	ctx := context.Background()
+	oldAccount, oldTransaction := f.oldHistory(t)
+	_, err := f.pool.Exec(ctx, `UPDATE accounts SET name='Cash' WHERE id=$1`, oldAccount)
+	require.NoError(t, err)
+	// A joined account also reserves its name; an unrelated owner's account does not.
+	_, err = f.pool.Exec(ctx, `WITH a AS (INSERT INTO accounts(owner_id,name,currency,access_mode,kind,initial_balance_date)
+ VALUES($1,'Cash (1)','RUB','shared','spending',CURRENT_DATE) RETURNING id)
+ INSERT INTO account_members(account_id,user_id,default_share) SELECT id,$2,0.5 FROM a`, f.other, f.user)
+	require.NoError(t, err)
+	_, err = f.pool.Exec(ctx, `INSERT INTO accounts(owner_id,name,currency,access_mode,kind,initial_balance_date)
+ VALUES($1,'Travel','RUB','personal','spending',CURRENT_DATE)`, f.other)
+	require.NoError(t, err)
+	var before string
+	require.NoError(t, f.pool.QueryRow(ctx, `SELECT row_to_json(t)::text FROM transactions t WHERE id=$1`, oldTransaction).Scan(&before))
+	p := f.configured(t)
+	require.Equal(t, "Cash", p.Report.Accounts[0].Name)
+	require.Equal(t, "Cash (2)", p.Accounts[0].Name)
+	result, err := f.svc.Confirm(ctx, f.user, p.ID, true, false)
+	require.NoError(t, err)
+	require.Equal(t, 3, result.Accounts)
+	f.exists(t, oldAccount, oldTransaction)
+	var after string
+	require.NoError(t, f.pool.QueryRow(ctx, `SELECT row_to_json(t)::text FROM transactions t WHERE id=$1`, oldTransaction).Scan(&after))
+	require.Equal(t, before, after)
+	for _, a := range p.Accounts {
+		var count int
+		require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE owner_id=$1 AND name=$2 AND deleted_at IS NULL`, f.user, a.Name).Scan(&count))
+		require.Equal(t, 1, count)
+	}
+	repeated, err := f.svc.Confirm(ctx, f.user, p.ID, false, false)
+	require.NoError(t, err)
+	require.Equal(t, result, repeated)
+	next := f.configured(t)
+	require.Equal(t, "Cash (3)", next.Accounts[0].Name)
+	_, err = f.svc.Confirm(ctx, f.user, next.ID, true, false)
+	require.NoError(t, err)
+	f.exists(t, oldAccount, oldTransaction)
+}
+
+func TestMonefyAppendRejectsNamesChangedSincePreview(t *testing.T) {
+	f := newImportFixture(t)
+	ctx := context.Background()
+	p := f.configured(t)
+	_, err := f.pool.Exec(ctx, `INSERT INTO accounts(owner_id,name,currency,access_mode,kind,initial_balance_date)
+ VALUES($1,'Cash','RUB','personal','spending',CURRENT_DATE)`, f.user)
+	require.NoError(t, err)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, true, false)
+	require.ErrorContains(t, err, "account_names_changed")
+	var count int
+	require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM transactions`).Scan(&count))
+	require.Zero(t, count)
+	updated := f.configured(t)
+	require.Equal(t, "Cash (1)", updated.Accounts[0].Name)
+	_, err = f.svc.Confirm(ctx, f.user, updated.ID, true, false)
+	require.NoError(t, err)
+}
+
+func TestMonefyAppendConcurrentRenameRollsBack(t *testing.T) {
+	f := newImportFixture(t)
+	ctx := context.Background()
+	old, _ := f.oldHistory(t)
+	p := f.configured(t)
+	tx, err := f.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx) //nolint:errcheck // Страховочный откат при ошибке assertion.
+	_, err = tx.Exec(ctx, `UPDATE accounts SET name='Cash' WHERE id=$1`, old)
+	require.NoError(t, err)
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, true, false)
+	require.ErrorIs(t, err, apperr.ErrConflict)
+	var count int
+	require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM monefy_imports`).Scan(&count))
+	require.Zero(t, count)
+	require.NoError(t, tx.Rollback(ctx))
+	_, err = f.svc.Confirm(ctx, f.user, p.ID, true, false)
+	require.NoError(t, err)
 }

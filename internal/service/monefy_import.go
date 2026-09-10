@@ -31,7 +31,7 @@ type importRepo interface {
 	LockReplacement(context.Context) error
 	Replacement(context.Context, string) (model.ImportReplacement, error)
 	DeleteReplacement(context.Context, string) error
-	Availability(context.Context, string) (model.ImportAvailability, error)
+	AccountNames(context.Context, string, bool) ([]string, error)
 	Currencies(context.Context) ([]string, error)
 	Catalog(context.Context, bool) ([]model.Category, error)
 	Receipt(context.Context, string, string) (model.ImportResult, error)
@@ -71,21 +71,11 @@ func (e *ImportError) Error() string            { return e.Code }
 func (e *ImportError) Unwrap() error            { return e.Kind }
 func importError(code string, kind error) error { return &ImportError{Code: code, Kind: kind} }
 
-func (s *ImportService) Availability(ctx context.Context, user string) (model.ImportAvailability, error) {
+func (s *ImportService) Availability(_ context.Context, user string) (model.ImportAvailability, error) {
 	if _, err := uuid.Parse(user); err != nil {
 		return model.ImportAvailability{}, apperr.ErrUnauthorized
 	}
-	return s.repo.Availability(ctx, user)
-}
-func (s *ImportService) requireEmpty(ctx context.Context, r importRepo, user string) error {
-	a, err := r.Availability(ctx, user)
-	if err != nil {
-		return err
-	}
-	if len(a.Reasons) > 0 {
-		return importError("account_not_empty", apperr.ErrConflict)
-	}
-	return nil
+	return model.ImportAvailability{Reasons: []string{}}, nil
 }
 
 func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader, mode model.ImportMode) (model.ImportPreview, error) {
@@ -103,11 +93,6 @@ func (s *ImportService) Preview(ctx context.Context, user string, src io.Reader,
 	}
 	if mode != model.ImportEmpty && mode != model.ImportReplace {
 		return model.ImportPreview{}, importError("invalid_import_mode", apperr.ErrValidation)
-	}
-	if mode == model.ImportEmpty {
-		if err := s.requireEmpty(ctx, s.repo, user); err != nil {
-			return model.ImportPreview{}, err
-		}
 	}
 	currencies, err := s.repo.Currencies(ctx)
 	if err != nil {
@@ -136,11 +121,6 @@ func (s *ImportService) Configure(ctx context.Context, user, id string, kinds ma
 	p, err := s.store.Load(user, id)
 	if err != nil {
 		return p, err
-	}
-	if p.Mode != model.ImportReplace {
-		if err = s.requireEmpty(ctx, s.repo, user); err != nil {
-			return model.ImportPreview{}, err
-		}
 	}
 	if len(kinds) != len(p.Report.Accounts) {
 		return model.ImportPreview{}, importError("invalid_account_kinds", apperr.ErrValidation)
@@ -237,6 +217,10 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 			p.AccountIcons[a.SourceID] = a.Icon
 		}
 	}
+	names, err := importAccountNames(ctx, s.repo, p, false)
+	if err != nil {
+		return model.ImportPreview{}, err
+	}
 	p.Accounts = []model.ImportAccount{}
 	p.Categories = importCategoriesWithIcons(p.Report.Categories, catalog, p.CategoryIcons)
 	add := func(severity monefy.Severity, code, entity, id, message string) {
@@ -261,7 +245,7 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 		if _, found := p.AccountIcons[a.ID]; !found {
 			p.AccountIcons[a.ID] = suggestImportIcon(a.Name, "account")
 		}
-		p.Accounts = append(p.Accounts, model.ImportAccount{SourceID: a.ID, Kind: kinds[a.ID], Icon: p.AccountIcons[a.ID]})
+		p.Accounts = append(p.Accounts, model.ImportAccount{SourceID: a.ID, Name: names[a.ID], Kind: kinds[a.ID], Icon: p.AccountIcons[a.ID]})
 	}
 	seen := map[string]bool{}
 	for _, c := range p.Categories {
@@ -429,8 +413,15 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 					return importError("replacement_blocked", apperr.ErrConflict)
 				}
 			}
-		} else if err = s.requireEmpty(ctx, r, user); err != nil {
+		}
+		names, err := importAccountNames(ctx, r, p, true)
+		if err != nil {
 			return err
+		}
+		for _, account := range p.Accounts {
+			if account.Name != names[account.SourceID] {
+				return importError("account_names_changed", apperr.ErrConflict)
+			}
 		}
 		catalog, err := r.Catalog(ctx, true)
 		if err != nil {
