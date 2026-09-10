@@ -86,6 +86,23 @@ func (r *ImportRepository) Currencies(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
+func (r *ImportRepository) CurrencyRates(ctx context.Context) (map[string]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT quote_currency,rate::text FROM exchange_rates WHERE base_currency='USD' AND rate>0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	rates := map[string]string{"USD": "1"}
+	for rows.Next() {
+		var code, rate string
+		if err := rows.Scan(&code, &rate); err != nil {
+			return nil, err
+		}
+		rates[code] = rate
+	}
+	return rates, rows.Err()
+}
+
 func (r *ImportRepository) Catalog(ctx context.Context, lock bool) ([]model.Category, error) {
 	q := `SELECT id, name, type, COALESCE(icon,'') FROM categories ORDER BY id`
 	if lock {
@@ -160,9 +177,14 @@ func (r *ImportRepository) Write(ctx context.Context, p model.ImportPreview) (mo
 			amount = -amount
 		}
 		var id string
-		err := r.db.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,category_id,description,date,created_by)
-		 VALUES($1,$2,$3::numeric,$4,$5,$6,$7,$8) RETURNING id`,
-			accounts[t.AccountID], t.Type, amount.String(), t.Currency, categories[t.CategoryID], t.Note, t.CreatedAt, p.UserID).Scan(&id)
+		var baseAmount *string
+		if t.DefaultCurrencyAmount != nil {
+			value := t.DefaultCurrencyAmount.String()
+			baseAmount = &value
+		}
+		err := r.db.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,category_id,description,date,created_by,default_currency,default_currency_amount)
+		 VALUES($1,$2,$3::numeric,$4,$5,$6,$7,$8,NULLIF($9,''),$10::numeric) RETURNING id`,
+			accounts[t.AccountID], t.Type, amount.String(), t.Currency, categories[t.CategoryID], t.Note, t.CreatedAt, p.UserID, t.DefaultCurrency, baseAmount).Scan(&id)
 		if err != nil {
 			return out, err
 		}

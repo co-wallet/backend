@@ -103,6 +103,16 @@ func convertExpr(amountExpr, fromCurrencyCol string, displayCurrencyIdx int) str
 		amountExpr, displayCurrencyIdx, fromCurrencyCol)
 }
 
+// transactionAmountExpr использует сохранённую стоимость операции и историческую
+// долю пользователя. Остатки счетов по-прежнему оцениваются отдельно.
+func transactionAmountExpr(displayCurrencyIdx int) string {
+	return fmt.Sprintf(`CASE
+		WHEN t.currency = $%d THEN ts.amount
+		WHEN t.default_currency = $%d AND t.default_currency_amount IS NOT NULL
+			THEN t.default_currency_amount * ts.amount / NULLIF(t.amount, 0)
+		ELSE NULL END`, displayCurrencyIdx, displayCurrencyIdx)
+}
+
 func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
 	displayCurrency := f.DisplayCurrency
 
@@ -184,7 +194,9 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	pQuery := fmt.Sprintf(`
 		SELECT
 		    COALESCE(SUM(CASE WHEN t.type = 'expense' THEN %s ELSE 0 END), 0) AS expenses,
-		    COALESCE(SUM(CASE WHEN t.type = 'income'  THEN %s ELSE 0 END), 0) AS income
+		    COALESCE(SUM(CASE WHEN t.type = 'income'  THEN %s ELSE 0 END), 0) AS income,
+		    COUNT(*) FILTER (WHERE t.type = 'expense' AND (%s) IS NULL AND ts.amount <> 0),
+		    COUNT(*) FILTER (WHERE t.type = 'income' AND (%s) IS NULL AND ts.amount <> 0)
 		FROM transactions t
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
@@ -195,8 +207,10 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		  AND t.type IN ('expense','income')`,
-		convertExpr("ts.amount", "t.currency", pDispIdx),
-		convertExpr("ts.amount", "t.currency", pDispIdx),
+		transactionAmountExpr(pDispIdx),
+		transactionAmountExpr(pDispIdx),
+		transactionAmountExpr(pDispIdx),
+		transactionAmountExpr(pDispIdx),
 		pAcctCond,
 		pKindCond,
 		pTxCond,
@@ -205,7 +219,8 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 	)
 
 	var expenses, income float64
-	if err := r.db.QueryRow(ctx, pQuery, pArgs...).Scan(&expenses, &income); err != nil {
+	var expensesMissingAmounts, incomeMissingAmounts int
+	if err := r.db.QueryRow(ctx, pQuery, pArgs...).Scan(&expenses, &income, &expensesMissingAmounts, &incomeMissingAmounts); err != nil {
 		return model.AnalyticsSummary{}, fmt.Errorf("period query: %w", err)
 	}
 
@@ -221,7 +236,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 			income += incoming
 		}
 	}
-	return model.AnalyticsSummary{Balance: balance, Expenses: expenses, Income: income}, nil
+	return model.AnalyticsSummary{Balance: balance, Expenses: expenses, Income: income, ExpensesMissingAmounts: expensesMissingAmounts, IncomeMissingAmounts: incomeMissingAmounts}, nil
 }
 
 func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
@@ -249,7 +264,8 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		    COALESCE(c.id::text, '%s') AS category_id,
 		    COALESCE(c.name, '%s') AS category_name,
 		    c.icon,
-		    COALESCE(SUM(%s), 0) AS amount
+		    COALESCE(SUM(%s), 0) AS amount,
+		    COUNT(*) FILTER (WHERE (%s) IS NULL AND ts.amount <> 0)
 		FROM transactions t
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
@@ -265,7 +281,8 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		ORDER BY amount DESC`,
 		uncategorizedCategoryID,
 		uncategorizedCategoryName,
-		convertExpr("ts.amount", "t.currency", dispIdx),
+		transactionAmountExpr(dispIdx),
+		transactionAmountExpr(dispIdx),
 		acctCond,
 		kindCond,
 		txCond,
@@ -289,7 +306,7 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 	var result []model.CategoryStat
 	for rows.Next() {
 		var s model.CategoryStat
-		if err := rows.Scan(&s.CategoryID, &s.CategoryName, &s.Icon, &s.Amount); err != nil {
+		if err := rows.Scan(&s.CategoryID, &s.CategoryName, &s.Icon, &s.Amount, &s.MissingAmounts); err != nil {
 			return nil, err
 		}
 		result = append(result, s)
@@ -341,7 +358,8 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	args = append(args, displayCurrency, f.DateFrom, f.DateTo, txType)
 
 	q := fmt.Sprintf(`
-		SELECT tg.id, tg.name, COALESCE(SUM(%s), 0) AS amount
+		SELECT tg.id, tg.name, COALESCE(SUM(%s), 0) AS amount,
+		    COUNT(*) FILTER (WHERE (%s) IS NULL AND ts.amount <> 0)
 		FROM transactions t
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
@@ -356,7 +374,8 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		  AND t.date <= $%d::date
 		GROUP BY tg.id, tg.name
 		ORDER BY amount DESC`,
-		convertExpr("ts.amount", "t.currency", dispIdx),
+		transactionAmountExpr(dispIdx),
+		transactionAmountExpr(dispIdx),
 		acctCond,
 		kindCond,
 		txCond,
@@ -374,7 +393,7 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	var result []model.TagStat
 	for rows.Next() {
 		var s model.TagStat
-		if err := rows.Scan(&s.TagID, &s.TagName, &s.Amount); err != nil {
+		if err := rows.Scan(&s.TagID, &s.TagName, &s.Amount, &s.MissingAmounts); err != nil {
 			return nil, err
 		}
 		result = append(result, s)

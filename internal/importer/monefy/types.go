@@ -85,6 +85,9 @@ type Transaction struct {
 	ID, AccountID, CategoryID, Type, Currency, Note string
 	Amount                                          Amount // Signed: negative expense, positive income.
 	CreatedAt                                       time.Time
+	DefaultCurrency                                 string
+	DefaultCurrencyAmount                           *Amount // Positive historical value in the export's base currency.
+	BaseAmountSource                                string
 }
 type Transfer struct {
 	ID, FromAccountID, ToAccountID, FromCurrency, ToCurrency, Note string

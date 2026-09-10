@@ -20,6 +20,7 @@ import (
 
 //go:generate mockgen -source=handler.go -destination=mocks/mock_import_service.go -package=mocks
 type importService interface {
+	ConfigureRates(context.Context, string, string, map[string]string) (model.ImportPreview, error)
 	Availability(context.Context, string) (model.ImportAvailability, error)
 	Preview(context.Context, string, io.Reader, model.ImportMode) (model.ImportPreview, error)
 	Configure(context.Context, string, string, map[string]model.AccountKind, map[string]string, map[string]string, map[string]model.ImportAccountAccess) (model.ImportPreview, error)
@@ -82,6 +83,22 @@ type optionsRequest struct {
 type confirmRequest struct {
 	AcknowledgeDeletion   bool `json:"acknowledge_deletion"`
 	AcknowledgeExclusions bool `json:"acknowledge_exclusions"`
+}
+
+func (h *Handler) ConfigureRates(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Rates map[string]string `json:"rates"`
+	}
+	if err := decode(w, r, &req); err != nil {
+		respondError(w, err)
+		return
+	}
+	p, err := h.service.ConfigureRates(r.Context(), middleware.UserIDFromCtx(r.Context()), chi.URLParam(r, "previewID"), req.Rates)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	httputil.JSONResponse(w, toPreview(p), http.StatusCreated)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) error {

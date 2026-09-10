@@ -3,6 +3,7 @@ package monefyhandler
 import (
 	"github.com/co-wallet/backend/internal/importer/monefy"
 	"github.com/co-wallet/backend/internal/model"
+	"sort"
 	"time"
 )
 
@@ -62,22 +63,31 @@ type replacementResponse struct {
 	Blockers map[string]int               `json:"blockers"`
 }
 type previewResponse struct {
-	Mode                          model.ImportMode     `json:"mode"`
-	Replacement                   *replacementResponse `json:"replacement,omitempty"`
-	ID                            string               `json:"preview_id"`
-	SHA256                        string               `json:"sha256"`
-	ExpiresAt                     time.Time            `json:"expires_at"`
-	CanConfirm                    bool                 `json:"can_confirm"`
-	RequiresExclusionConfirmation bool                 `json:"requires_exclusion_confirmation"`
-	Counts                        map[string]int       `json:"counts"`
-	PeriodFrom                    *time.Time           `json:"period_from"`
-	PeriodTo                      *time.Time           `json:"period_to"`
-	Currencies                    []string             `json:"currencies"`
-	Accounts                      []accountResponse    `json:"accounts"`
-	Categories                    []categoryResponse   `json:"categories"`
-	Diagnostics                   []diagnosticResponse `json:"diagnostics"`
-	Exclusions                    []exclusionResponse  `json:"exclusions"`
-	Deleted                       map[string]int       `json:"deleted"`
+	CurrencyRates                 []currencyRateResponse `json:"currency_rates"`
+	Mode                          model.ImportMode       `json:"mode"`
+	Replacement                   *replacementResponse   `json:"replacement,omitempty"`
+	ID                            string                 `json:"preview_id"`
+	SHA256                        string                 `json:"sha256"`
+	ExpiresAt                     time.Time              `json:"expires_at"`
+	CanConfirm                    bool                   `json:"can_confirm"`
+	RequiresExclusionConfirmation bool                   `json:"requires_exclusion_confirmation"`
+	Counts                        map[string]int         `json:"counts"`
+	PeriodFrom                    *time.Time             `json:"period_from"`
+	PeriodTo                      *time.Time             `json:"period_to"`
+	Currencies                    []string               `json:"currencies"`
+	Accounts                      []accountResponse      `json:"accounts"`
+	Categories                    []categoryResponse     `json:"categories"`
+	Diagnostics                   []diagnosticResponse   `json:"diagnostics"`
+	Exclusions                    []exclusionResponse    `json:"exclusions"`
+	Deleted                       map[string]int         `json:"deleted"`
+}
+
+type currencyRateResponse struct {
+	Currency     string `json:"currency"`
+	BaseCurrency string `json:"base_currency"`
+	Rate         string `json:"rate"`
+	Source       string `json:"source"`
+	Transactions int    `json:"transactions"`
 }
 
 func toPreview(p model.ImportPreview) previewResponse {
@@ -85,6 +95,11 @@ func toPreview(p model.ImportPreview) previewResponse {
 		Counts: map[string]int{"accounts": len(p.Accounts), "categories": len(p.Categories), "transactions": len(p.Report.Transactions), "transfers": len(p.Report.Transfers)}, PeriodFrom: p.PeriodFrom, PeriodTo: p.PeriodTo,
 		Currencies: []string{}, Accounts: []accountResponse{}, Categories: []categoryResponse{}, Diagnostics: []diagnosticResponse{}, Exclusions: []exclusionResponse{}, Deleted: p.Report.Deleted}
 	r.Mode = p.Mode
+	r.CurrencyRates = []currencyRateResponse{}
+	for _, rate := range p.CurrencyRates {
+		r.CurrencyRates = append(r.CurrencyRates, currencyRateResponse{rate.Currency, rate.BaseCurrency, rate.Rate, rate.Source, rate.Transactions})
+	}
+	sort.Slice(r.CurrencyRates, func(i, j int) bool { return r.CurrencyRates[i].Currency < r.CurrencyRates[j].Currency })
 	if r.Mode == "" {
 		r.Mode = model.ImportEmpty
 	}
