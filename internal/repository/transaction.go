@@ -154,7 +154,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		}
 	}
 
-	q += " ORDER BY t.date DESC, t.created_at DESC"
+	q += " ORDER BY t.date DESC, t.created_at DESC, t.id DESC"
 
 	limit := f.Limit
 	if limit <= 0 || limit > 100 {
