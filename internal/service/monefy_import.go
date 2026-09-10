@@ -195,7 +195,7 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 			return model.ImportPreview{}, err
 		}
 		p.Replacement = &scope
-		for _, code := range []string{"shared_accounts", "foreign_membership", "foreign_members", "external_transactions", "foreign_authors", "foreign_shares"} {
+		for _, code := range []string{"foreign_members", "external_transactions", "foreign_authors", "foreign_shares"} {
 			if scope.Blockers[code] > 0 {
 				p.Report.Diagnostics = append(p.Report.Diagnostics, monefy.Diagnostic{Severity: monefy.Blocking, Code: "target_replace_" + code, Message: replacementReason(code)})
 			}
@@ -472,14 +472,10 @@ func (s *ImportService) Confirm(ctx context.Context, user, id string, acknowledg
 
 func replacementReason(code string) string {
 	switch code {
-	case "shared_accounts":
-		return "У вас есть общие счета, включая удалённые. Полная замена недоступна."
-	case "foreign_membership":
-		return "Вы участвуете в чужих счетах. Полная замена недоступна."
 	case "foreign_members":
 		return "В ваших счетах участвуют другие пользователи. Полная замена недоступна."
 	case "external_transactions":
-		return "Есть операции или переводы, связанные с чужими счетами. Полная замена недоступна."
+		return "Есть операции или переводы между удаляемыми личными и сохраняемыми счетами. Полная замена недоступна."
 	case "foreign_authors":
 		return "В вашей истории есть операции других пользователей. Полная замена недоступна."
 	case "foreign_shares":

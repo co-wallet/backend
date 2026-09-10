@@ -33,11 +33,10 @@ func (r *ImportRepository) Replacement(ctx context.Context, user string) (model.
 	var accountsJSON, countsJSON, blockersJSON []byte
 	var contents string
 	err := r.db.QueryRow(ctx, `WITH
- owned AS (SELECT * FROM accounts WHERE owner_id=$1),
+ owned AS (SELECT * FROM accounts WHERE owner_id=$1 AND access_mode='personal'),
  related AS (SELECT t.* FROM transactions t WHERE
-   t.account_id IN (SELECT id FROM owned) OR t.to_account_id IN (SELECT id FROM owned)
-   OR t.created_by=$1 OR EXISTS(SELECT 1 FROM transaction_shares s WHERE s.transaction_id=t.id AND s.user_id=$1)),
- members AS (SELECT * FROM account_members WHERE account_id IN (SELECT id FROM owned) OR user_id=$1),
+   t.account_id IN (SELECT id FROM owned) OR t.to_account_id IN (SELECT id FROM owned)),
+ members AS (SELECT * FROM account_members WHERE account_id IN (SELECT id FROM owned)),
  shares AS (SELECT * FROM transaction_shares WHERE transaction_id IN (SELECT id FROM related)),
  links AS (SELECT * FROM transaction_tags WHERE transaction_id IN (SELECT id FROM related))
  SELECT
@@ -51,8 +50,6 @@ func (r *ImportRepository) Replacement(ctx context.Context, user string) (model.
    'shares',(SELECT count(*) FROM shares),
    'tag_links',(SELECT count(*) FROM links)),
  jsonb_build_object(
-   'shared_accounts',(SELECT count(*) FROM owned WHERE access_mode<>'personal'),
-   'foreign_membership',(SELECT count(*) FROM members WHERE account_id NOT IN (SELECT id FROM owned)),
    'foreign_members',(SELECT count(*) FROM members WHERE user_id<>$1),
    'external_transactions',(SELECT count(*) FROM related WHERE account_id NOT IN (SELECT id FROM owned) OR (to_account_id IS NOT NULL AND to_account_id NOT IN (SELECT id FROM owned))),
    'foreign_authors',(SELECT count(*) FROM related WHERE created_by<>$1),
@@ -84,9 +81,9 @@ func (r *ImportRepository) Replacement(ctx context.Context, user string) (model.
 // (including visibility preferences) are intentionally untouched.
 func (r *ImportRepository) DeleteReplacement(ctx context.Context, user string) error {
 	for _, query := range []string{
-		`DELETE FROM transactions WHERE account_id IN (SELECT id FROM accounts WHERE owner_id=$1)`,
-		`DELETE FROM account_members WHERE account_id IN (SELECT id FROM accounts WHERE owner_id=$1)`,
-		`DELETE FROM accounts WHERE owner_id=$1`,
+		`DELETE FROM transactions WHERE account_id IN (SELECT id FROM accounts WHERE owner_id=$1 AND access_mode='personal')`,
+		`DELETE FROM account_members WHERE account_id IN (SELECT id FROM accounts WHERE owner_id=$1 AND access_mode='personal')`,
+		`DELETE FROM accounts WHERE owner_id=$1 AND access_mode='personal'`,
 	} {
 		if _, err := r.db.Exec(ctx, query, user); err != nil {
 			return err
