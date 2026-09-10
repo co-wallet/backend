@@ -86,6 +86,21 @@ func (mr *MockimportRepoMockRecorder) Currencies(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Currencies", reflect.TypeOf((*MockimportRepo)(nil).Currencies), arg0)
 }
 
+// CurrencyRates mocks base method.
+func (m *MockimportRepo) CurrencyRates(arg0 context.Context) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrencyRates", arg0)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CurrencyRates indicates an expected call of CurrencyRates.
+func (mr *MockimportRepoMockRecorder) CurrencyRates(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrencyRates", reflect.TypeOf((*MockimportRepo)(nil).CurrencyRates), arg0)
+}
+
 // DeleteReplacement mocks base method.
 func (m *MockimportRepo) DeleteReplacement(arg0 context.Context, arg1 string) error {
 	m.ctrl.T.Helper()

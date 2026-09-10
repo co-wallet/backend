@@ -26,6 +26,7 @@ import (
 
 //go:generate mockgen -source=monefy_import.go -destination=mocks/mock_import.go -package=mocks
 type importRepo interface {
+	CurrencyRates(context.Context) (map[string]string, error)
 	GetByUsername(context.Context, string) (model.User, error)
 	LockUser(context.Context, string) error
 	LockReplacement(context.Context) error
@@ -185,6 +186,9 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 		}
 	}
 	p.Report.Diagnostics = diagnostics
+	if err := prepareImportCurrency(ctx, s.repo, &p); err != nil {
+		return model.ImportPreview{}, err
+	}
 	if p.Mode == model.ImportReplace {
 		scope, err := s.repo.Replacement(ctx, p.UserID)
 		if err != nil {
@@ -280,6 +284,9 @@ func (s *ImportService) prepare(ctx context.Context, p model.ImportPreview, kind
 			amount = -amount
 		}
 		checkAmount(amount, "Transaction", t.ID, true)
+		if t.DefaultCurrencyAmount != nil {
+			checkAmount(*t.DefaultCurrencyAmount, "Transaction", t.ID, true)
+		}
 		date(t.CreatedAt)
 		if t.CreatedAt.Before(accountDates[t.AccountID]) {
 			add(monefy.Blocking, "before_initial_balance", "Transaction", t.ID, "Операция раньше даты начального остатка; co-wallet не учтёт её в балансе")

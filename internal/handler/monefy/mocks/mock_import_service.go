@@ -72,6 +72,21 @@ func (mr *MockimportServiceMockRecorder) Configure(arg0, arg1, arg2, arg3, arg4,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Configure", reflect.TypeOf((*MockimportService)(nil).Configure), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
+// ConfigureRates mocks base method.
+func (m *MockimportService) ConfigureRates(arg0 context.Context, arg1, arg2 string, arg3 map[string]string) (model.ImportPreview, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConfigureRates", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(model.ImportPreview)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConfigureRates indicates an expected call of ConfigureRates.
+func (mr *MockimportServiceMockRecorder) ConfigureRates(arg0, arg1, arg2, arg3 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigureRates", reflect.TypeOf((*MockimportService)(nil).ConfigureRates), arg0, arg1, arg2, arg3)
+}
+
 // Confirm mocks base method.
 func (m *MockimportService) Confirm(arg0 context.Context, arg1, arg2 string, arg3, arg4 bool) (model.ImportResult, error) {
 	m.ctrl.T.Helper()

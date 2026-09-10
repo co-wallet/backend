@@ -86,3 +86,18 @@ func TestSharedOptionsContract(t *testing.T) {
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 }
+
+func TestCurrencyRatesContract(t *testing.T) {
+	svc := mocks.NewMockimportService(gomock.NewController(t))
+	r := chi.NewRouter()
+	r.Post("/{previewID}/rates", New(svc).ConfigureRates)
+	svc.EXPECT().ConfigureRates(gomock.Any(), "user", "id", map[string]string{"TRY": "2.5"}).Return(model.ImportPreview{
+		ID: "new", CurrencyRates: map[string]model.ImportCurrencyRate{"TRY": {Currency: "TRY", BaseCurrency: "RUB", Rate: "2.5", Source: "manual", Transactions: 12}},
+	}, nil)
+	req := httptest.NewRequest("POST", "/id/rates", strings.NewReader(`{"rates":{"TRY":"2.5"}}`)).WithContext(context.WithValue(context.Background(), middleware.ContextUserID, "user"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.Contains(t, w.Body.String(), `"preview_id":"new"`)
+	require.Contains(t, w.Body.String(), `"currency_rates":[{"currency":"TRY","base_currency":"RUB","rate":"2.5","source":"manual","transactions":12}]`)
+}

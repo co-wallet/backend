@@ -7,6 +7,7 @@ import (
 	"github.com/co-wallet/backend/internal/apperr"
 	"github.com/co-wallet/backend/internal/importer/monefy"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 	"github.com/co-wallet/backend/internal/service/mocks"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -37,7 +38,7 @@ func (s *ImportSharesSuite) TestConfigureSharedValidationAndRounding() {
 			c := gomock.NewController(s.T())
 			repo, store := mocks.NewMockimportRepo(c), mocks.NewMockimportStore(c)
 			svc := &ImportService{repo: repo, store: store}
-			p := model.ImportPreview{ID: s.id, UserID: s.user, Report: monefy.Report{Accounts: []monefy.Account{{ID: "a", InitialBalance: 1000}}, Transactions: []monefy.Transaction{{ID: "t", AccountID: "a", Type: "expense", Amount: -1}}}}
+			p := model.ImportPreview{ID: s.id, UserID: s.user, Report: monefy.Report{Accounts: []monefy.Account{{ID: "a", InitialBalance: 1000}}, Transactions: []monefy.Transaction{{ID: "t", AccountID: "a", Type: "expense", Amount: -1, DefaultCurrency: "RUB", DefaultCurrencyAmount: ptr.To(monefy.Amount(1))}}}}
 			store.EXPECT().Load(s.user, s.id).Return(p, nil)
 			repo.EXPECT().Catalog(gomock.Any(), false).Return(nil, nil)
 			repo.EXPECT().AccountNames(gomock.Any(), s.user, false).Return(nil, nil)

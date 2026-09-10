@@ -111,6 +111,14 @@ func normalize(tables map[string][]record, opts Options, out *Report) error {
 		out.Rates = append(out.Rates, rate)
 	}
 	rates := indexRates(out.Rates)
+	var baseCurrency Currency
+	baseCount := 0
+	for _, currency := range out.Currencies {
+		if currency.IsBase {
+			baseCurrency = currency
+			baseCount++
+		}
+	}
 	for _, row := range tables["Transaction"] {
 		id := row.text("Id", false)
 		deleted := row.optionalDate("DeletedOn") != nil
@@ -143,6 +151,16 @@ func normalize(tables map[string][]record, opts Options, out *Report) error {
 			continue
 		}
 		t.Type, t.Currency = c.Type, a.Currency
+		if baseCount == 1 && allowed[baseCurrency.Code] {
+			t.DefaultCurrency = baseCurrency.Code
+			t.DefaultCurrencyAmount = historicalAmount(rates, t.Amount, a.CurrencyID, baseCurrency.ID, t.CreatedAt)
+			if t.DefaultCurrencyAmount != nil {
+				t.BaseAmountSource = "historical"
+			}
+		}
+		if t.DefaultCurrencyAmount == nil {
+			out.diagnostic(Warning, "missing_base_amount", "Transaction", id, "Нет однозначной базовой валюты или исторического курса: сумма в базовой валюте не заполнена; текущий курс не подставляется")
+		}
 		if c.Type == "expense" {
 			t.Amount = -t.Amount
 		}
@@ -265,4 +283,39 @@ func resolveTransfer(out *Report, index map[ratePair][]rateChoice, transfer *Tra
 	}
 	amount := Amount(product.Int64())
 	transfer.ToAmount, transfer.RateID = &amount, selected.ID
+}
+
+// historicalAmount prefers the direct source rate, then the inverse pair.
+// Future rates and conflicting revisions cannot establish a historical value.
+// Keep integer thousandths and truncate only once, as for Monefy transfers.
+func historicalAmount(index map[ratePair][]rateChoice, amount Amount, fromID, toID int64, date time.Time) *Amount {
+	if fromID == toID {
+		return &amount
+	}
+	for _, inverse := range []bool{false, true} {
+		pair := ratePair{fromID, toID}
+		if inverse {
+			pair = ratePair{toID, fromID}
+		}
+		rates := index[pair]
+		i := sort.Search(len(rates), func(i int) bool { return rates[i].rate.Date.After(date) }) - 1
+		if i < 0 {
+			continue
+		}
+		if rates[i].ambiguous {
+			return nil
+		}
+		numerator, denominator := rates[i].rate.Millionths, int64(1000000)
+		if inverse {
+			numerator, denominator = denominator, numerator
+		}
+		product := new(big.Int).Mul(big.NewInt(int64(amount)), big.NewInt(numerator))
+		product.Quo(product, big.NewInt(denominator))
+		if !product.IsInt64() || product.Sign() <= 0 {
+			return nil
+		}
+		converted := Amount(product.Int64())
+		return &converted
+	}
+	return nil
 }

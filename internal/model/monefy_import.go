@@ -9,6 +9,7 @@ import (
 // ImportPreview is a private, immutable snapshot stored outside the application DB.
 // Financial amounts stay exact until SQL persistence and HTTP serialization.
 type ImportPreview struct {
+	CurrencyRates        map[string]ImportCurrencyRate
 	Mode                 ImportMode
 	Replacement          *ImportReplacement
 	ID, UserID, SHA256   string
@@ -22,6 +23,11 @@ type ImportPreview struct {
 	CategoryIcons        map[string]string
 	AccountIcons         map[string]string
 	PeriodFrom, PeriodTo *time.Time
+}
+
+type ImportCurrencyRate struct {
+	Currency, BaseCurrency, Rate, Source string
+	Transactions                         int
 }
 
 type ImportMode string

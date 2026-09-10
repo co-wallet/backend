@@ -87,6 +87,7 @@ func newRouter(
 				r.Get("/availability", importHandler.Availability)
 				r.Post("/preview", importHandler.Preview)
 				r.Post("/{previewID}/options", importHandler.Configure)
+				r.Post("/{previewID}/rates", importHandler.ConfigureRates)
 				r.Post("/{previewID}/confirm", importHandler.Confirm)
 			})
 

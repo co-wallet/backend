@@ -157,7 +157,7 @@ func TestBuildByCategoryQueryIncludesTransactionFilters(t *testing.T) {
 	for _, substr := range []string{
 		"t.category_id = ANY($2)",
 		"tt_filter.tag_id = ANY($3)",
-		"quote_currency = $4",
+		"t.default_currency = $4",
 		"t.type = $7",
 	} {
 		if !strings.Contains(query, substr) {
