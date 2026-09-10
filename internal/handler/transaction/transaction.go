@@ -32,6 +32,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if mode := r.URL.Query().Get("tag_mode"); mode == "and" {
 		f.TagMode = "and"
 	}
+	if withoutTags, err := strconv.ParseBool(r.URL.Query().Get("without_tags")); err == nil {
+		f.WithoutTags = withoutTags
+	}
 	if s := r.URL.Query().Get("date_from"); s != "" {
 		if t, err := time.Parse("2006-01-02", s); err == nil {
 			f.DateFrom = &t

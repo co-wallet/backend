@@ -125,6 +125,17 @@ func TestTransactionFilterMatchesListSemantics(t *testing.T) {
 			wantArgs: []any{"user-id", "tag-1", "tag-2"},
 			wantNext: 4,
 		},
+		{
+			name: "transactions without tags",
+			filter: model.AnalyticsFilter{
+				WithoutTags: true,
+			},
+			wantContains: []string{
+				"NOT EXISTS (SELECT 1 FROM transaction_tags tt_filter WHERE tt_filter.transaction_id = t.id)",
+			},
+			wantArgs: []any{"user-id"},
+			wantNext: 2,
+		},
 	}
 
 	for _, tt := range tests {

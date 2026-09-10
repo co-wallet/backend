@@ -36,6 +36,7 @@ type AnalyticsFilter struct {
 	CategoryIDs             []string
 	TagIDs                  []string
 	TagMode                 string
+	WithoutTags             bool
 	DisplayCurrency         string          // convert all amounts to this currency (default: USD)
 	TxType                  TransactionType // "expense" (default) or "income"
 }

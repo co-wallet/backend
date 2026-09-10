@@ -122,7 +122,7 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		args = append(args, f.AccountIDs)
 		n++
 	}
-	if len(f.CategoryIDs) > 0 || len(f.TagIDs) > 0 {
+	if len(f.CategoryIDs) > 0 || len(f.TagIDs) > 0 || f.WithoutTags {
 		q += ` AND (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1))`
 	}
 	if len(f.CategoryIDs) > 0 {
@@ -152,6 +152,9 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 			args = append(args, f.TagIDs)
 			n++
 		}
+	}
+	if f.WithoutTags {
+		q += ` AND NOT EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id)`
 	}
 
 	q += " ORDER BY t.date DESC, t.created_at DESC, t.id DESC"

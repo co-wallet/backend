@@ -43,6 +43,7 @@ func TestParseFilterParams(t *testing.T) {
 				"category_ids":  {validUUID},
 				"tag_ids":       {validUUID + "," + secondUUID},
 				"tag_mode":      {"and"},
+				"without_tags":  {"true"},
 				"currency":      {"eur"},
 				"type":          {"income"},
 			},
@@ -54,6 +55,7 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, []string{validUUID}, p.CategoryIDs)
 				assert.Equal(t, []string{validUUID, secondUUID}, p.TagIDs)
 				assert.Equal(t, "and", p.TagMode)
+				assert.True(t, p.WithoutTags)
 				assert.Equal(t, "EUR", p.Currency)
 				assert.Equal(t, model.TransactionTypeIncome, p.TxType)
 			},
@@ -121,6 +123,11 @@ func TestParseFilterParams(t *testing.T) {
 			wantErr: "tag_mode must be 'or' or 'and'",
 		},
 		{
+			name:    "invalid without_tags",
+			query:   url.Values{"without_tags": {"sometimes"}},
+			wantErr: "without_tags must be a boolean",
+		},
+		{
 			name:    "currency wrong length",
 			query:   url.Values{"currency": {"EURO"}},
 			wantErr: "currency must be a 3-letter ISO code",
@@ -177,6 +184,7 @@ func TestFilterParams_ToFilter(t *testing.T) {
 			CategoryIDs: []string{"category-1"},
 			TagIDs:      []string{"tag-1"},
 			TagMode:     "and",
+			WithoutTags: true,
 			Currency:    "EUR",
 			TxType:      model.TransactionTypeExpense,
 		}
@@ -190,6 +198,7 @@ func TestFilterParams_ToFilter(t *testing.T) {
 		assert.Equal(t, p.CategoryIDs, f.CategoryIDs)
 		assert.Equal(t, p.TagIDs, f.TagIDs)
 		assert.Equal(t, "and", f.TagMode)
+		assert.True(t, f.WithoutTags)
 	})
 
 	t.Run("falls back to default currency", func(t *testing.T) {

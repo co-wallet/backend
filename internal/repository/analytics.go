@@ -18,6 +18,8 @@ type AnalyticsRepository struct {
 const (
 	uncategorizedCategoryID   = "uncategorized"
 	uncategorizedCategoryName = "Без категории"
+	untaggedTagID             = "untagged"
+	untaggedTagName           = "Без тегов"
 )
 
 func NewAnalyticsRepository(db *pgxpool.Pool) *AnalyticsRepository {
@@ -60,6 +62,9 @@ func transactionFilter(f model.AnalyticsFilter, args []any, idx int) (string, []
 		fmt.Fprintf(&condition, " AND t.category_id = ANY($%d)", idx)
 		args = append(args, f.CategoryIDs)
 		idx++
+	}
+	if f.WithoutTags {
+		condition.WriteString(" AND NOT EXISTS (SELECT 1 FROM transaction_tags tt_filter WHERE tt_filter.transaction_id = t.id)")
 	}
 	if len(f.TagIDs) == 0 {
 		return condition.String(), args, idx
@@ -358,13 +363,13 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 	args = append(args, displayCurrency, f.DateFrom, f.DateTo, txType)
 
 	q := fmt.Sprintf(`
-		SELECT tg.id, tg.name, COALESCE(SUM(%s), 0) AS amount,
+		SELECT COALESCE(tg.id::text, '%s'), COALESCE(tg.name, '%s'), COALESCE(SUM(%s), 0) AS amount,
 		    COUNT(*) FILTER (WHERE (%s) IS NULL AND ts.amount <> 0)
 		FROM transactions t
 		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
 		JOIN accounts a ON a.id = t.account_id
-		JOIN transaction_tags tt ON tt.transaction_id = t.id
-		JOIN tags tg ON tg.id = tt.tag_id
+		LEFT JOIN transaction_tags tt ON tt.transaction_id = t.id
+		LEFT JOIN tags tg ON tg.id = tt.tag_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
 		          WHERE am.account_id = a.id AND am.user_id = $1))%s%s%s
@@ -374,6 +379,8 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		  AND t.date <= $%d::date
 		GROUP BY tg.id, tg.name
 		ORDER BY amount DESC`,
+		untaggedTagID,
+		untaggedTagName,
 		transactionAmountExpr(dispIdx),
 		transactionAmountExpr(dispIdx),
 		acctCond,

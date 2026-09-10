@@ -59,15 +59,27 @@ func TestAnalyticsByTag(t *testing.T) {
 		kind          string
 		amount, share float64
 		date          time.Time
+		tagged        bool
 	}{
-		{"expense", 100, 40, today}, {"income", 500, 200, today},
-		{"income", 999, 999, today.AddDate(0, -2, 0)},
+		{"expense", 100, 40, today, true}, {"income", 500, 200, today, true},
+		{"expense", 50, 25, today, false}, {"income", 250, 100, today, false},
+		{"income", 999, 999, today.AddDate(0, -2, 0), true},
 	} {
 		var id string
 		require.NoError(t, pool.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,date,created_by) VALUES ($1,$2,$3,'USD',$4,$5) RETURNING id`, account, tx.kind, tx.amount, tx.date, user).Scan(&id))
 		exec(`INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES ($1,$2,$3)`, id, user, tx.share)
-		exec(`INSERT INTO transaction_tags(transaction_id,tag_id) VALUES ($1,$2)`, id, tag)
+		if tx.tagged {
+			exec(`INSERT INTO transaction_tags(transaction_id,tag_id) VALUES ($1,$2)`, id, tag)
+		}
 	}
+	untaggedTransactions, err := repository.NewTransactionRepository(pool).List(
+		ctx,
+		user,
+		model.TransactionFilter{WithoutTags: true, Page: 1, Limit: 50},
+	)
+	require.NoError(t, err)
+	require.Len(t, untaggedTransactions, 2)
+
 	analytics := repository.NewAnalyticsRepository(pool)
 	base := model.AnalyticsFilter{UserID: user, DisplayCurrency: "USD", DateFrom: today.AddDate(0, 0, -1), DateTo: today.AddDate(0, 0, 1)}
 	for _, tt := range []struct {
@@ -82,13 +94,25 @@ func TestAnalyticsByTag(t *testing.T) {
 			f.TxType = tt.kind
 			stats, err := analytics.ByTag(ctx, f)
 			require.NoError(t, err)
-			require.Equal(t, []model.TagStat{{TagID: tag, TagName: "Shared tag", Amount: tt.amount}}, stats)
+			untaggedAmount := 25.0
+			if tt.kind == model.TransactionTypeIncome {
+				untaggedAmount = 100
+			}
+			require.Equal(t, []model.TagStat{
+				{TagID: tag, TagName: "Shared tag", Amount: tt.amount},
+				{TagID: "untagged", TagName: "Без тегов", Amount: untaggedAmount},
+			}, stats)
 			f.AccountIDs = []string{account}
 			f.AccountKinds = []model.AccountKind{model.AccountKindSpending}
 			f.TagIDs = []string{tag}
 			filtered, err := analytics.ByTag(ctx, f)
 			require.NoError(t, err)
-			require.Equal(t, stats, filtered)
+			require.Equal(t, []model.TagStat{{TagID: tag, TagName: "Shared tag", Amount: tt.amount}}, filtered)
+			f.TagIDs = nil
+			f.WithoutTags = true
+			filtered, err = analytics.ByTag(ctx, f)
+			require.NoError(t, err)
+			require.Equal(t, []model.TagStat{{TagID: "untagged", TagName: "Без тегов", Amount: untaggedAmount}}, filtered)
 			f.AccountKinds = []model.AccountKind{model.AccountKindDeposit}
 			filtered, err = analytics.ByTag(ctx, f)
 			require.NoError(t, err)
