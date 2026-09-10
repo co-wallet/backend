@@ -56,6 +56,7 @@ func (s *TransactionHandlerSuite) TestList_AppliesFilters() {
 			s.Equal([]string{"c1"}, f.CategoryIDs)
 			s.Equal([]string{"t1"}, f.TagIDs)
 			s.Equal("and", f.TagMode)
+			s.True(f.WithoutTags)
 			s.Equal(2, f.Page)
 			s.Equal(10, f.Limit)
 			s.NotNil(f.DateFrom)
@@ -63,7 +64,7 @@ func (s *TransactionHandlerSuite) TestList_AppliesFilters() {
 			return []model.Transaction{{ID: "tx1"}}, nil
 		})
 
-	req := withUser(httptest.NewRequest(http.MethodGet, "/transactions?account_ids=a1,a2&category_ids=c1&tag_ids=t1&tag_mode=and&date_from=2025-01-01&date_to=2025-12-31&page=2&limit=10", nil), "u1")
+	req := withUser(httptest.NewRequest(http.MethodGet, "/transactions?account_ids=a1,a2&category_ids=c1&tag_ids=t1&tag_mode=and&without_tags=true&date_from=2025-01-01&date_to=2025-12-31&page=2&limit=10", nil), "u1")
 	rec := httptest.NewRecorder()
 	s.h.List(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
