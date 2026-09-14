@@ -596,3 +596,137 @@ func (s *TransactionServiceSuite) TestUpdate_TransferRequiresDestinationRelation
 	_, err := s.svc.Update(ctx, "sender", "tx", model.UpdateTransactionReq{Amount: ptr.To(200.0)})
 	s.ErrorIs(err, apperr.ErrValidation)
 }
+
+func (s *TransactionServiceSuite) TestUpdate_MoveAccount_ReplacesHistoricalSharesAndCurrency() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeExpense, Amount: 100, Currency: "USD", CreatedBy: "former", ExchangeRate: ptr.To(2.0), DefaultCurrency: ptr.To("EUR"), DefaultCurrencyAmount: ptr.To(90.0), Shares: []model.TransactionShare{{UserID: "former", Amount: 100, IsCustom: true}}}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().GetByID(ctx, "new").Return(model.Account{ID: "new", Currency: "EUR"}, nil)
+	s.repo.EXPECT().GetMemberDefaults(ctx, "new").Return([]model.AccountMember{{UserID: "editor", DefaultShare: 0.25}, {UserID: "other", DefaultShare: 0.75}}, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal("new", tx.AccountID)
+		s.Equal("EUR", tx.Currency)
+		s.Equal("former", tx.CreatedBy)
+		s.Nil(tx.ExchangeRate)
+		s.Nil(tx.DefaultCurrency)
+		s.Nil(tx.DefaultCurrencyAmount)
+		s.Equal([]model.TransactionShare{{UserID: "editor", Amount: 50}, {UserID: "other", Amount: 150}}, tx.Shares)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return(nil, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{AccountID: ptr.To("new"), Amount: ptr.To(200.0)})
+	s.Require().NoError(err)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_MoveAccount_Forbidden() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old"}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(false, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{AccountID: ptr.To("new")})
+	s.ErrorIs(err, apperr.ErrForbidden)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_MoveAccount_Deleted() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old"}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().GetByID(ctx, "new").Return(model.Account{}, apperr.ErrNotFound)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{AccountID: ptr.To("new")})
+	s.ErrorIs(err, apperr.ErrNotFound)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_MoveAccount_RejectsOldParticipant() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Amount: 100}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().GetByID(ctx, "new").Return(model.Account{ID: "new"}, nil)
+	s.repo.EXPECT().GetMemberDefaults(ctx, "new").Return([]model.AccountMember{{UserID: "editor", DefaultShare: 1}}, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{AccountID: ptr.To("new"), Shares: []model.ShareReq{{UserID: "former", Amount: 100}}})
+	s.ErrorIs(err, apperr.ErrValidation)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_Transfer_SameAccountRejected() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeTransfer, ToAccountID: ptr.To("dest")}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{ToAccountID: ptr.To("old")})
+	s.ErrorIs(err, apperr.ErrValidation)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_Transfer_NewDestination() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", ToAccountID: ptr.To("dest"), AccountTo: &model.Account{Currency: "USD"}}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().GetTransferDestination(ctx, "new").Return(model.Account{ID: "new", Currency: "EUR"}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal("new", *tx.ToAccountID)
+		s.Equal(90.0, *tx.ToAmount)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return(nil, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{ToAccountID: ptr.To("new"), ToAmount: ptr.To(90.0)})
+	s.NoError(err)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_Transfer_ExternalDestinationDisabled() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeTransfer, ToAccountID: ptr.To("dest")}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+	s.accountRepo.EXPECT().GetTransferDestination(ctx, "new").Return(model.Account{ID: "new"}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(false, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{ToAccountID: ptr.To("new")})
+	s.ErrorIs(err, apperr.ErrForbidden)
+}
+
+func (s *TransactionServiceSuite) TestUpdate_MoveAccount_CustomShares() {
+	for _, tc := range []struct {
+		name   string
+		shares []model.ShareReq
+		valid  bool
+	}{
+		{"valid", []model.ShareReq{{UserID: "editor", Amount: 100}}, true},
+		{"duplicate", []model.ShareReq{{UserID: "editor", Amount: 50}, {UserID: "editor", Amount: 50}}, false},
+		{"negative", []model.ShareReq{{UserID: "editor", Amount: -1}}, false},
+	} {
+		s.Run(tc.name, func() {
+			ctx := context.Background()
+			s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Amount: 100}, nil)
+			s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
+			s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+			s.accountRepo.EXPECT().GetByID(ctx, "new").Return(model.Account{ID: "new"}, nil)
+			s.repo.EXPECT().GetMemberDefaults(ctx, "new").Return([]model.AccountMember{{UserID: "editor", DefaultShare: 1}}, nil)
+			if tc.valid {
+				s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+					s.Equal([]model.TransactionShare{{UserID: "editor", Amount: 100, IsCustom: true}}, tx.Shares)
+					return tx, nil
+				})
+				s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return(nil, nil)
+			}
+			_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{AccountID: ptr.To("new"), Shares: tc.shares})
+			if tc.valid {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, apperr.ErrValidation)
+			}
+		})
+	}
+}
+
+func (s *TransactionServiceSuite) TestUpdate_MovedTransaction_KeepsNewAccountParticipant() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "new", CreatedBy: "former", Amount: 100, Shares: []model.TransactionShare{{UserID: "editor", Amount: 100}}}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
+	s.repo.EXPECT().GetMemberDefaults(ctx, "new").Return([]model.AccountMember{{UserID: "editor", DefaultShare: 1}}, nil)
+	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+		s.Equal([]model.TransactionShare{{UserID: "editor", Amount: 200}}, tx.Shares)
+		return tx, nil
+	})
+	s.tagRepo.EXPECT().ListForTransaction(ctx, "tx").Return(nil, nil)
+	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{Amount: ptr.To(200.0)})
+	s.NoError(err)
+}

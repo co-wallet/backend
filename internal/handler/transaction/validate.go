@@ -78,6 +78,8 @@ func (r *createTransactionReq) toModelReq() model.CreateTransactionReq {
 }
 
 type updateTransactionReq struct {
+	AccountID             *string    `json:"accountId"`
+	ToAccountID           *string    `json:"toAccountId"`
 	Amount                *float64   `json:"amount"`
 	ToAmount              *float64   `json:"toAmount"`
 	DefaultCurrency       *string    `json:"defaultCurrency"`
@@ -90,6 +92,12 @@ type updateTransactionReq struct {
 }
 
 func (r *updateTransactionReq) validate() error {
+	if r.AccountID != nil && strings.TrimSpace(*r.AccountID) == "" {
+		return errors.New("accountId is required")
+	}
+	if r.ToAccountID != nil && strings.TrimSpace(*r.ToAccountID) == "" {
+		return errors.New("toAccountId is required")
+	}
 	if r.Amount != nil && *r.Amount <= 0 {
 		return errors.New("amount must be positive")
 	}
@@ -98,6 +106,8 @@ func (r *updateTransactionReq) validate() error {
 
 func (r *updateTransactionReq) toModelReq() model.UpdateTransactionReq {
 	req := model.UpdateTransactionReq{
+		AccountID:             r.AccountID,
+		ToAccountID:           r.ToAccountID,
 		Amount:                r.Amount,
 		ToAmount:              r.ToAmount,
 		DefaultCurrency:       r.DefaultCurrency,

@@ -64,6 +64,8 @@ type CreateTransactionReq struct {
 }
 
 type UpdateTransactionReq struct {
+	AccountID             *string
+	ToAccountID           *string
 	Amount                *float64
 	ToAmount              *float64
 	DefaultCurrency       *string

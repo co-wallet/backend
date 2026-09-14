@@ -226,12 +226,14 @@ func (r *TransactionRepository) updateLocked(ctx context.Context, tx model.Trans
 	err := r.db.QueryRow(ctx, `
 		UPDATE transactions
 		SET amount = $2, to_amount = $3, category_id = $4, description = $5,
-		    date = $6, default_currency = $7, default_currency_amount = $8, updated_at = now()
+		    date = $6, default_currency = $7, default_currency_amount = $8,
+		    account_id = $9, to_account_id = $10, currency = $11, exchange_rate = $12, updated_at = now()
 		WHERE id = $1
 		RETURNING id, account_id, to_account_id, to_amount, type, amount, currency, exchange_rate,
 		          default_currency, default_currency_amount,
 		          category_id, description, date, created_by, created_at, updated_at`,
 		tx.ID, tx.Amount, tx.ToAmount, tx.CategoryID, tx.Description, tx.Date, tx.DefaultCurrency, tx.DefaultCurrencyAmount,
+		tx.AccountID, tx.ToAccountID, tx.Currency, tx.ExchangeRate,
 	).Scan(
 		&tx.ID, &tx.AccountID, &tx.ToAccountID, &tx.ToAmount, &tx.Type, &tx.Amount, &tx.Currency, &tx.ExchangeRate,
 		&tx.DefaultCurrency, &tx.DefaultCurrencyAmount,
