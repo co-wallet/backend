@@ -206,6 +206,60 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		return model.Transaction{}, fmt.Errorf("not a member of account: %w", apperr.ErrForbidden)
 	}
 
+	accountChanged := req.AccountID != nil && *req.AccountID != existing.AccountID
+	destinationChanged := req.ToAccountID != nil && (existing.ToAccountID == nil || *req.ToAccountID != *existing.ToAccountID)
+	if req.ToAccountID != nil && existing.Type != model.TransactionTypeTransfer {
+		return model.Transaction{}, fmt.Errorf("destination requires a transfer: %w", apperr.ErrValidation)
+	}
+	if accountChanged {
+		member, err := s.accounts.IsMember(ctx, *req.AccountID, userID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		if !member {
+			return model.Transaction{}, fmt.Errorf("not a member of new account: %w", apperr.ErrForbidden)
+		}
+		account, err := s.accounts.GetByID(ctx, *req.AccountID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		if account.DeletedAt != nil {
+			return model.Transaction{}, apperr.ErrNotFound
+		}
+		if existing.Currency != account.Currency {
+			existing.Currency = account.Currency
+			existing.ExchangeRate, existing.DefaultCurrency, existing.DefaultCurrencyAmount = nil, nil, nil
+			existing.ToAmount = nil
+		}
+		existing.AccountID, existing.Account = account.ID, account
+	}
+	if destinationChanged {
+		existing.ToAccountID = req.ToAccountID
+	}
+	if existing.Type == model.TransactionTypeTransfer && (accountChanged || destinationChanged) {
+		if existing.ToAccountID == nil || *existing.ToAccountID == existing.AccountID {
+			return model.Transaction{}, fmt.Errorf("accounts must differ: %w", apperr.ErrValidation)
+		}
+		destination, err := s.accounts.GetTransferDestination(ctx, *existing.ToAccountID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		member, err := s.accounts.IsMember(ctx, destination.ID, userID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		if !member && (existing.Account.AccessMode == model.AccountAccessModeShared || destination.AccessMode == model.AccountAccessModeShared || !destination.AcceptTransfers) {
+			return model.Transaction{}, fmt.Errorf("destination unavailable: %w", apperr.ErrForbidden)
+		}
+		if existing.AccountTo == nil || existing.AccountTo.Currency != destination.Currency {
+			existing.ToAmount = nil
+		}
+		existing.AccountTo = &destination
+		if destination.Currency == existing.Currency {
+			existing.ToAmount = nil
+		}
+	}
+
 	if req.Amount != nil {
 		if *req.Amount <= 0 || math.IsNaN(*req.Amount) || math.IsInf(*req.Amount, 0) {
 			return model.Transaction{}, fmt.Errorf("amount must be positive: %w", apperr.ErrValidation)
@@ -241,6 +295,34 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		existing.Date = *req.Date
 	}
 
+	if accountChanged {
+		members, err := s.repo.GetMemberDefaults(ctx, existing.AccountID)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+		if len(members) == 0 {
+			return model.Transaction{}, apperr.ErrValidation
+		}
+		allowed := make(map[string]bool, len(members))
+		for _, member := range members {
+			allowed[member.UserID] = true
+		}
+		seen := make(map[string]bool, len(req.Shares))
+		for _, share := range req.Shares {
+			if seen[share.UserID] || share.Amount < 0 || math.IsNaN(share.Amount) || math.IsInf(share.Amount, 0) {
+				return model.Transaction{}, fmt.Errorf("invalid account shares: %w", apperr.ErrValidation)
+			}
+			seen[share.UserID] = true
+			if !allowed[share.UserID] {
+				return model.Transaction{}, fmt.Errorf("share user is not a member: %w", apperr.ErrValidation)
+			}
+		}
+		existing.Shares, err = calculateShares(existing.Amount, members)
+		if err != nil {
+			return model.Transaction{}, err
+		}
+	}
+
 	if req.Shares != nil {
 		if err := validateCustomShares(existing.Amount, req.Shares); err != nil {
 			return model.Transaction{}, fmt.Errorf("%w: %w", apperr.ErrValidation, err)
@@ -249,7 +331,7 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		for i, sh := range req.Shares {
 			existing.Shares[i] = model.TransactionShare{UserID: sh.UserID, Amount: sh.Amount, IsCustom: true}
 		}
-	} else if req.Amount != nil {
+	} else if req.Amount != nil && !accountChanged {
 		// Amount changed but no explicit shares provided — recalculate shares
 		// to keep transaction_shares in sync with the new amount.
 		existing.Shares, err = s.recalcShares(ctx, existing)
@@ -373,7 +455,7 @@ func (s *TransactionService) recalcShares(ctx context.Context, tx model.Transact
 	if err != nil {
 		return nil, err
 	}
-	if len(members) <= 1 {
+	if len(members) == 0 {
 		return []model.TransactionShare{{UserID: tx.CreatedBy, Amount: tx.Amount}}, nil
 	}
 	return calculateShares(tx.Amount, members)

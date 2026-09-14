@@ -253,3 +253,27 @@ func (s *TransactionHandlerSuite) TestGet_WithoutDestinationAccount() {
 	s.Equal("", body["toAccountName"])
 	s.Equal("", body["toCurrency"])
 }
+
+func (s *TransactionHandlerSuite) TestUpdate_AccountFields() {
+	s.svc.EXPECT().Update(gomock.Any(), "u1", "tx1", gomock.Any()).DoAndReturn(func(_ context.Context, _, _ string, req model.UpdateTransactionReq) (model.Transaction, error) {
+		s.Require().NotNil(req.AccountID)
+		s.Equal("new-source", *req.AccountID)
+		s.Require().NotNil(req.ToAccountID)
+		s.Equal("new-dest", *req.ToAccountID)
+		return model.Transaction{ID: "tx1"}, nil
+	})
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/transactions/tx1", strings.NewReader(`{"accountId":"new-source","toAccountId":"new-dest"}`)), "u1")
+	req = withTxIDParam(req, "tx1")
+	w := httptest.NewRecorder()
+	s.h.Update(w, req)
+	s.Equal(http.StatusOK, w.Code)
+}
+
+func (s *TransactionHandlerSuite) TestUpdate_EmptyAccountRejected() {
+	for _, body := range []string{`{"accountId":" "}`, `{"toAccountId":""}`} {
+		req := withUser(withTxIDParam(httptest.NewRequest(http.MethodPatch, "/transactions/tx1", strings.NewReader(body)), "tx1"), "u1")
+		w := httptest.NewRecorder()
+		s.h.Update(w, req)
+		s.Equal(http.StatusBadRequest, w.Code)
+	}
+}
