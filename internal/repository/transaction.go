@@ -122,6 +122,15 @@ func (r *TransactionRepository) List(ctx context.Context, userID string, f model
 		args = append(args, f.AccountIDs)
 		n++
 	}
+	if len(f.Types) > 0 {
+		types := make([]string, len(f.Types))
+		for i, transactionType := range f.Types {
+			types[i] = string(transactionType)
+		}
+		q += fmt.Sprintf(" AND t.type = ANY($%d)", n)
+		args = append(args, types)
+		n++
+	}
 	if len(f.CategoryIDs) > 0 || len(f.TagIDs) > 0 || f.WithoutTags {
 		q += ` AND (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1))`
 	}

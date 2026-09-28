@@ -40,3 +40,30 @@ func TestTransactionPaginationWithIdenticalDates(t *testing.T) {
 	}
 	require.Equal(t, expected, ids, "pages must cover every transaction exactly once in stable order")
 }
+
+func TestTransactionListFiltersMultipleTypes(t *testing.T) {
+	f := newImportFixture(t)
+	ctx := context.Background()
+	var account string
+	require.NoError(t, f.pool.QueryRow(ctx, `INSERT INTO accounts(owner_id,name,currency,access_mode,kind,initial_balance_date)
+		VALUES($1,'Type filter','RUB','personal','spending',CURRENT_DATE) RETURNING id`, f.user).Scan(&account))
+	_, err := f.pool.Exec(ctx, `INSERT INTO transactions(account_id,type,amount,currency,date,created_by)
+		VALUES($1,'expense',10,'RUB',CURRENT_DATE,$2),
+		      ($1,'income',20,'RUB',CURRENT_DATE,$2),
+		      ($1,'transfer',30,'RUB',CURRENT_DATE,$2)`, account, f.user)
+	require.NoError(t, err)
+
+	rows, err := repository.NewTransactionRepository(f.pool).List(ctx, f.user, model.TransactionFilter{
+		Types: []model.TransactionType{model.TransactionTypeExpense, model.TransactionTypeTransfer},
+		Page:  1,
+		Limit: 50,
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		require.Contains(t, []model.TransactionType{
+			model.TransactionTypeExpense,
+			model.TransactionTypeTransfer,
+		}, row.Type)
+	}
+}
