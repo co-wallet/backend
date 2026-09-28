@@ -53,6 +53,7 @@ func (s *TransactionHandlerSuite) TestList_AppliesFilters() {
 		List(gomock.Any(), "u1", gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, f model.TransactionFilter) ([]model.Transaction, error) {
 			s.Equal([]string{"a1", "a2"}, f.AccountIDs)
+			s.Equal([]model.TransactionType{model.TransactionTypeExpense, model.TransactionTypeTransfer}, f.Types)
 			s.Equal([]string{"c1"}, f.CategoryIDs)
 			s.Equal([]string{"t1"}, f.TagIDs)
 			s.Equal("and", f.TagMode)
@@ -64,11 +65,21 @@ func (s *TransactionHandlerSuite) TestList_AppliesFilters() {
 			return []model.Transaction{{ID: "tx1"}}, nil
 		})
 
-	req := withUser(httptest.NewRequest(http.MethodGet, "/transactions?account_ids=a1,a2&category_ids=c1&tag_ids=t1&tag_mode=and&without_tags=true&date_from=2025-01-01&date_to=2025-12-31&page=2&limit=10", nil), "u1")
+	req := withUser(httptest.NewRequest(http.MethodGet, "/transactions?account_ids=a1,a2&types=expense,transfer&category_ids=c1&tag_ids=t1&tag_mode=and&without_tags=true&date_from=2025-01-01&date_to=2025-12-31&page=2&limit=10", nil), "u1")
 	rec := httptest.NewRecorder()
 	s.h.List(rec, req)
 	s.Equal(http.StatusOK, rec.Code)
 	s.Contains(rec.Body.String(), `"tx1"`)
+}
+
+func (s *TransactionHandlerSuite) TestList_RejectsInvalidType() {
+	req := withUser(httptest.NewRequest(http.MethodGet, "/transactions?types=expense,unknown", nil), "u1")
+	rec := httptest.NewRecorder()
+
+	s.h.List(rec, req)
+
+	s.Equal(http.StatusBadRequest, rec.Code)
+	s.Contains(rec.Body.String(), "types must contain only expense, income or transfer")
 }
 
 func (s *TransactionHandlerSuite) TestList_DefaultsPageLimit() {

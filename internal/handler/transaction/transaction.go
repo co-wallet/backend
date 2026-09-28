@@ -23,6 +23,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if ids := r.URL.Query().Get("account_ids"); ids != "" {
 		f.AccountIDs = strings.Split(ids, ",")
 	}
+	if types := r.URL.Query().Get("types"); types != "" {
+		for _, value := range strings.Split(types, ",") {
+			transactionType := model.TransactionType(value)
+			if !transactionType.IsValid() {
+				jsonError(w, "types must contain only expense, income or transfer", http.StatusBadRequest)
+				return
+			}
+			f.Types = append(f.Types, transactionType)
+		}
+	}
 	if ids := r.URL.Query().Get("category_ids"); ids != "" {
 		f.CategoryIDs = strings.Split(ids, ",")
 	}

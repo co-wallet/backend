@@ -84,6 +84,7 @@ type ShareReq struct {
 
 type TransactionFilter struct {
 	AccountIDs  []string
+	Types       []TransactionType
 	CategoryIDs []string
 	TagIDs      []string
 	TagMode     string // "or" (default) or "and"
