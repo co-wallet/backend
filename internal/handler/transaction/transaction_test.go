@@ -48,6 +48,21 @@ func withTxIDParam(req *http.Request, id string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
 }
 
+func (s *TransactionHandlerSuite) TestGet_TransferOwnerUsernames() {
+	s.svc.EXPECT().GetByID(gomock.Any(), "u1", "tx").Return(model.Transaction{
+		ID: "tx", Type: model.TransactionTypeTransfer,
+		Account:   model.Account{Name: "Source", OwnerUsername: "sender"},
+		AccountTo: &model.Account{Name: "Destination", OwnerUsername: "receiver"},
+	}, nil)
+	rec := httptest.NewRecorder()
+	s.h.Get(rec, withTxIDParam(withUser(httptest.NewRequest(http.MethodGet, "/transactions/tx", nil), "u1"), "tx"))
+	s.Equal(http.StatusOK, rec.Code)
+	var body map[string]any
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	s.Equal("sender", body["accountOwnerUsername"])
+	s.Equal("receiver", body["toAccountOwnerUsername"])
+}
+
 func (s *TransactionHandlerSuite) TestList_AppliesFilters() {
 	s.svc.EXPECT().
 		List(gomock.Any(), "u1", gomock.Any()).

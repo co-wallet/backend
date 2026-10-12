@@ -29,6 +29,7 @@ func (k AccountKind) IsValid() bool {
 }
 
 type Account struct {
+	OwnerUsername      string
 	AcceptTransfers    bool
 	ID                 string
 	OwnerID            string

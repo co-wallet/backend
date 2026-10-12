@@ -197,13 +197,13 @@ func TestDashboardTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
 		{CategoryID: "transfers:" + deposit, CategoryName: "В 'Deposit'", Amount: 30},
-		{CategoryID: "transfers:" + external, CategoryName: "В 'External'", Amount: 4},
+		{CategoryID: "transfers:" + external, CategoryName: "В 'External' · @two", Amount: 4},
 	}, groups)
 	f.TxType = model.TransactionTypeIncome
 	groups, err = analytics.ByCategory(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
-		{CategoryID: "transfers:" + external, CategoryName: "Из 'External'", Amount: 30},
+		{CategoryID: "transfers:" + external, CategoryName: "Из 'External' · @two", Amount: 30},
 		{CategoryID: "transfers:" + deposit, CategoryName: "Из 'Deposit'", Amount: 25},
 	}, groups)
 	f = base
@@ -240,7 +240,7 @@ func TestDashboardTransfers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []model.CategoryStat{
 		{CategoryID: "transfers:" + deposit, CategoryName: "В 'Deposit'", Amount: 30},
-		{CategoryID: "transfers:" + external, CategoryName: "В 'Deposit'", Amount: 8},
+		{CategoryID: "transfers:" + external, CategoryName: "В 'Deposit' · @two", Amount: 8},
 	}, groups)
 
 }

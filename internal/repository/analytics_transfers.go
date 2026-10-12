@@ -8,10 +8,11 @@ import (
 )
 
 type transferStat struct {
-	AccountID   string
-	AccountName string
-	Outgoing    float64
-	Incoming    float64
+	OwnerUsername string
+	AccountID     string
+	AccountName   string
+	Outgoing      float64
+	Incoming      float64
 }
 
 func (r *AnalyticsRepository) transferTotals(ctx context.Context, f model.AnalyticsFilter) (float64, float64, error) {
@@ -46,6 +47,10 @@ func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.Analyti
                     WHERE am.account_id = a.id AND am.user_id = $1))%s%s
         )
         SELECT counterpart.id, counterpart.name,
+            CASE WHEN counterpart.owner_id = $1 OR EXISTS (
+                SELECT 1 FROM account_members member
+                WHERE member.account_id = counterpart.id AND member.user_id = $1
+            ) THEN '' ELSE counterpart_owner.username END,
             COALESCE(SUM(CASE WHEN source.id IS NOT NULL AND destination.id IS NULL
                 THEN %s ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN destination.id IS NOT NULL AND source.id IS NULL
@@ -55,11 +60,12 @@ func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.Analyti
         LEFT JOIN selected_accounts destination ON destination.id = t.to_account_id
         JOIN accounts counterpart ON counterpart.id = CASE
             WHEN source.id IS NOT NULL THEN t.to_account_id ELSE t.account_id END
+        JOIN users counterpart_owner ON counterpart_owner.id = counterpart.owner_id
         LEFT JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
         WHERE t.type = 'transfer'
             AND ((source.id IS NOT NULL) <> (destination.id IS NOT NULL))
             AND t.date >= $%d::date AND t.date <= $%d::date%s
-        GROUP BY counterpart.id, counterpart.name`,
+        GROUP BY counterpart.id, counterpart.name, counterpart.owner_id, counterpart_owner.username`,
 		analyticsShare(f.AmountMode, "a"), accountCond, kindCond,
 		convertExpr("COALESCE("+analyticsAmount(f.AmountMode)+", 0)", "t.currency", idx),
 		convertExpr("COALESCE(t.to_amount, t.amount) * destination.share", "destination.currency", idx),
@@ -73,7 +79,7 @@ func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.Analyti
 	var stats []transferStat
 	for rows.Next() {
 		var stat transferStat
-		if err := rows.Scan(&stat.AccountID, &stat.AccountName, &stat.Outgoing, &stat.Incoming); err != nil {
+		if err := rows.Scan(&stat.AccountID, &stat.AccountName, &stat.OwnerUsername, &stat.Outgoing, &stat.Incoming); err != nil {
 			return nil, err
 		}
 		stats = append(stats, stat)
