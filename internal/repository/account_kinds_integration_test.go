@@ -101,14 +101,17 @@ func TestAccountKindsMigrationPreservesHistory(t *testing.T) {
 	defer d.Close() //nolint:errcheck // Закрываем тестовое подключение.
 	require.NoError(t, goose.DownTo(d, "../../migrations", 21))
 	repo := repository.NewAccountRepository(f.pool)
+	var before []model.Account
 	for _, kind := range []model.AccountKind{model.AccountKindSpending, model.AccountKindDeposit, model.AccountKindInvestment} {
 		a, err := repo.Create(ctx, model.Account{OwnerID: f.user, Name: string(kind), Kind: kind, AccessMode: model.AccountAccessModePersonal, Currency: "USD", InitialBalance: 123.4567, InitialBalanceDate: time.Now()})
 		require.NoError(t, err)
 		_, err = repository.NewTransactionRepository(f.pool).Create(ctx, model.Transaction{AccountID: a.ID, Type: model.TransactionTypeIncome, Amount: 12.3456, Currency: "USD", Date: time.Now(), CreatedBy: f.user, Shares: []model.TransactionShare{{UserID: f.user, Amount: 12.3456}}})
 		require.NoError(t, err)
+		// Read individual records: the current list query requires later order migrations.
+		stored, err := repo.GetByID(ctx, a.ID)
+		require.NoError(t, err)
+		before = append(before, stored)
 	}
-	before, err := repo.ListByUser(ctx, f.user)
-	require.NoError(t, err)
 	// Owners are listed even without membership; inspect all stored records as well.
 	var historyBefore, historyAfter string
 	snapshot := `SELECT json_build_object('accounts',(SELECT json_agg(a ORDER BY id) FROM accounts a),'transactions',(SELECT json_agg(t ORDER BY id) FROM transactions t),'shares',(SELECT json_agg(s ORDER BY id) FROM transaction_shares s))::text`

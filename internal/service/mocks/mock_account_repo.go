@@ -174,6 +174,20 @@ func (mr *MockaccountRepoMockRecorder) RemoveMember(ctx, accountID, userID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMember", reflect.TypeOf((*MockaccountRepo)(nil).RemoveMember), ctx, accountID, userID)
 }
 
+// SetOrder mocks base method.
+func (m *MockaccountRepo) SetOrder(ctx context.Context, userID string, accountIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetOrder", ctx, userID, accountIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetOrder indicates an expected call of SetOrder.
+func (mr *MockaccountRepoMockRecorder) SetOrder(ctx, userID, accountIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOrder", reflect.TypeOf((*MockaccountRepo)(nil).SetOrder), ctx, userID, accountIDs)
+}
+
 // SoftDelete mocks base method.
 func (m *MockaccountRepo) SoftDelete(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()

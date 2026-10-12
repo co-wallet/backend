@@ -2,6 +2,7 @@ package accounthandler_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,6 +36,38 @@ func (s *AccountHandlerSuite) SetupTest() {
 	s.svc = mocks.NewMockaccountService(s.ctrl)
 	s.users = mocks.NewMockuserSource(s.ctrl)
 	s.h = accounthandler.New(s.svc, s.users)
+}
+
+func (s *AccountHandlerSuite) TestSetOrder_Success() {
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	s.svc.EXPECT().SetOrder(gomock.Any(), "u1", []string{id}).Return(nil)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/accounts/order", strings.NewReader(`{"accountIds":["`+id+`"]}`)), "u1")
+	rec := httptest.NewRecorder()
+	s.h.SetOrder(rec, req)
+	s.Equal(http.StatusNoContent, rec.Code)
+	s.Empty(rec.Body.String())
+}
+
+func (s *AccountHandlerSuite) TestSetOrder_InvalidRequests() {
+	for _, body := range []string{`{`, `{}`, `{"accountIds":null}`, `{"accountIds":["bad"]}`, `{"accountIds":[""]}`, `{"accountIds":[],"userId":"other"}`, `{"accountIds":["550e8400-e29b-41d4-a716-446655440000","550E8400-E29B-41D4-A716-446655440000"]}`} {
+		req := withUser(httptest.NewRequest(http.MethodPatch, "/accounts/order", strings.NewReader(body)), "u1")
+		rec := httptest.NewRecorder()
+		s.h.SetOrder(rec, req)
+		s.Equal(http.StatusBadRequest, rec.Code, body)
+	}
+}
+
+func (s *AccountHandlerSuite) TestSetOrder_ServiceErrors() {
+	for _, tc := range []struct {
+		err    error
+		status int
+	}{{apperr.ErrForbidden, 403}, {apperr.ErrConflict, 409}, {apperr.ErrValidation, 400}, {errors.New("db failed"), 500}} {
+		s.svc.EXPECT().SetOrder(gomock.Any(), "u1", []string{}).Return(tc.err)
+		req := withUser(httptest.NewRequest(http.MethodPatch, "/accounts/order", strings.NewReader(`{"accountIds":[]}`)), "u1")
+		rec := httptest.NewRecorder()
+		s.h.SetOrder(rec, req)
+		s.Equal(tc.status, rec.Code)
+	}
 }
 
 func withUser(req *http.Request, id string) *http.Request {

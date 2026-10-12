@@ -19,6 +19,7 @@ import (
 //go:generate mockgen -source=account.go -destination=mocks/mock_account_repo.go -package=mocks
 
 type accountRepo interface {
+	SetOrder(ctx context.Context, userID string, accountIDs []string) error
 	ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Account, error)
 	ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error)
@@ -61,6 +62,41 @@ func NewAccountService(pool *pgxpool.Pool, accounts *repository.AccountRepositor
 
 func (s *AccountService) ListByUser(ctx context.Context, userID string) ([]model.Account, error) {
 	return s.accounts.ListByUser(ctx, userID)
+}
+
+func (s *AccountService) SetOrder(ctx context.Context, userID string, accountIDs []string) error {
+	if accountIDs == nil {
+		return fmt.Errorf("accountIds is required: %w", apperr.ErrValidation)
+	}
+	seen := make(map[string]bool, len(accountIDs))
+	for _, id := range accountIDs {
+		if id == "" || seen[id] {
+			return fmt.Errorf("accountIds must be nonempty and unique: %w", apperr.ErrValidation)
+		}
+		seen[id] = true
+	}
+	return s.withTx(ctx, func(accountsTx accountRepo) error {
+		accounts, err := accountsTx.ListByUser(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("list accounts for ordering: %w", err)
+		}
+		available := make(map[string]bool, len(accounts))
+		for _, account := range accounts {
+			available[account.ID] = true
+		}
+		for _, id := range accountIDs {
+			if !available[id] {
+				return fmt.Errorf("account is not available: %w", apperr.ErrForbidden)
+			}
+		}
+		if len(accountIDs) != len(accounts) {
+			return fmt.Errorf("account list has changed; reload and retry: %w", apperr.ErrConflict)
+		}
+		if err := accountsTx.SetOrder(ctx, userID, accountIDs); err != nil {
+			return fmt.Errorf("save account order: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *AccountService) ListBalancesByUser(ctx context.Context, userID, displayCurrency string) (map[string]model.AccountBalance, error) {

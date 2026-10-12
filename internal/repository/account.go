@@ -28,14 +28,16 @@ func (r *AccountRepository) WithTx(tx pgx.Tx) *AccountRepository {
 // ListByUser returns all non-deleted accounts where user is owner or member.
 func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]model.Account, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT DISTINCT a.id, a.owner_id, a.name, a.access_mode, a.kind, a.currency, a.icon,
+		SELECT a.id, a.owner_id, a.name, a.access_mode, a.kind, a.currency, a.icon,
 		       a.initial_balance, a.initial_balance_date,
 		       a.created_at, a.updated_at, a.accept_transfers
 		FROM accounts a
-		LEFT JOIN account_members am ON am.account_id = a.id
+		LEFT JOIN account_order ao ON ao.account_id = a.id AND ao.user_id = $1
 		WHERE a.deleted_at IS NULL
-		  AND (a.owner_id = $1 OR am.user_id = $1)
-		ORDER BY a.created_at`, userID)
+		  AND (a.owner_id = $1 OR EXISTS (
+		      SELECT 1 FROM account_members am WHERE am.account_id = a.id AND am.user_id = $1
+		  ))
+		ORDER BY ao.position NULLS LAST, a.created_at, a.id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +56,17 @@ func (r *AccountRepository) ListByUser(ctx context.Context, userID string) ([]mo
 		accounts = append(accounts, a)
 	}
 	return accounts, rows.Err()
+}
+
+// SetOrder stores only the requesting user's preferences in one atomic statement.
+func (r *AccountRepository) SetOrder(ctx context.Context, userID string, accountIDs []string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO account_order (user_id, account_id, position)
+		SELECT $1, account_id, ordinal - 1
+		FROM unnest($2::uuid[]) WITH ORDINALITY AS ordered(account_id, ordinal)
+		ORDER BY account_id
+		ON CONFLICT (user_id, account_id) DO UPDATE SET position = EXCLUDED.position`, userID, accountIDs)
+	return err
 }
 
 // GetByID returns a non-deleted account by ID. Returns apperr.ErrNotFound if absent or deleted.

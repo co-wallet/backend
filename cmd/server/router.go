@@ -106,6 +106,7 @@ func newRouter(
 			r.Get("/transfer-accounts", accountHandler.TransferAccounts)
 			r.Get("/accounts", accountHandler.List)
 			r.Post("/accounts", accountHandler.Create)
+			r.Patch("/accounts/order", accountHandler.SetOrder)
 			r.Route("/accounts/{accountID}", func(r chi.Router) {
 				r.Use(middleware.AccountMember(accountRepo))
 				r.Get("/", accountHandler.Get)

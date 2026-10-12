@@ -46,6 +46,56 @@ func (s *AccountServiceSuite) SetupTest() {
 	}
 }
 
+func (s *AccountServiceSuite) TestSetOrder() {
+	ids := []string{"shared", "personal"}
+	gomock.InOrder(
+		s.repo.EXPECT().ListByUser(gomock.Any(), "member").Return([]model.Account{{ID: "personal"}, {ID: "shared"}}, nil),
+		s.repo.EXPECT().SetOrder(gomock.Any(), "member", ids).Return(nil),
+	)
+	s.NoError(s.svc.SetOrder(context.Background(), "member", ids))
+	s.True(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestSetOrder_InvalidInput() {
+	for _, ids := range [][]string{nil, {""}, {"a", "a"}} {
+		s.ErrorIs(s.svc.SetOrder(context.Background(), "u", ids), apperr.ErrValidation)
+	}
+	s.False(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestSetOrder_EmptyCatalog() {
+	s.repo.EXPECT().ListByUser(gomock.Any(), "u").Return([]model.Account{}, nil)
+	s.repo.EXPECT().SetOrder(gomock.Any(), "u", []string{}).Return(nil)
+	s.NoError(s.svc.SetOrder(context.Background(), "u", []string{}))
+}
+
+func (s *AccountServiceSuite) TestSetOrder_UnavailableAccount() {
+	s.repo.EXPECT().ListByUser(gomock.Any(), "u").Return([]model.Account{{ID: "a"}}, nil)
+	s.ErrorIs(s.svc.SetOrder(context.Background(), "u", []string{"a", "foreign-or-deleted"}), apperr.ErrForbidden)
+	s.False(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestSetOrder_IncompleteCatalog() {
+	s.repo.EXPECT().ListByUser(gomock.Any(), "u").Return([]model.Account{{ID: "a"}, {ID: "new"}}, nil)
+	s.ErrorIs(s.svc.SetOrder(context.Background(), "u", []string{"a"}), apperr.ErrConflict)
+	s.False(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestSetOrder_ListError() {
+	failure := errors.New("database offline")
+	s.repo.EXPECT().ListByUser(gomock.Any(), "u").Return(nil, failure)
+	s.ErrorIs(s.svc.SetOrder(context.Background(), "u", []string{"a"}), failure)
+	s.False(s.txCommitCh)
+}
+
+func (s *AccountServiceSuite) TestSetOrder_SaveError() {
+	failure := errors.New("write failed")
+	s.repo.EXPECT().ListByUser(gomock.Any(), "u").Return([]model.Account{{ID: "a"}}, nil)
+	s.repo.EXPECT().SetOrder(gomock.Any(), "u", []string{"a"}).Return(failure)
+	s.ErrorIs(s.svc.SetOrder(context.Background(), "u", []string{"a"}), failure)
+	s.False(s.txCommitCh)
+}
+
 func (s *AccountServiceSuite) TestCreateAccount_Personal_OwnerHasFullShare() {
 	req := model.CreateAccountReq{
 		Name:       "Wallet",
