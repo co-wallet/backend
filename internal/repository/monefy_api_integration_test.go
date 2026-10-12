@@ -48,6 +48,7 @@ func (f *importFixture) api(t *testing.T) (http.Handler, string) {
 	r.Post("/api/imports/monefy/{previewID}/confirm", h.Confirm)
 	r.Get("/api/accounts", a.List)
 	r.Post("/api/accounts", a.Create)
+	r.Patch("/api/accounts/order", a.SetOrder)
 	r.Route("/api/accounts/{accountID}", func(r chi.Router) {
 		r.Use(middleware.AccountMember(accounts))
 		r.Get("/", a.Get)

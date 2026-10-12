@@ -174,6 +174,20 @@ func (mr *MockaccountServiceMockRecorder) RemoveMember(ctx, requesterID, account
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMember", reflect.TypeOf((*MockaccountService)(nil).RemoveMember), ctx, requesterID, accountID, memberUserID)
 }
 
+// SetOrder mocks base method.
+func (m *MockaccountService) SetOrder(ctx context.Context, userID string, accountIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetOrder", ctx, userID, accountIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetOrder indicates an expected call of SetOrder.
+func (mr *MockaccountServiceMockRecorder) SetOrder(ctx, userID, accountIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOrder", reflect.TypeOf((*MockaccountService)(nil).SetOrder), ctx, userID, accountIDs)
+}
+
 // UpdateAccount mocks base method.
 func (m *MockaccountService) UpdateAccount(ctx context.Context, requesterID, accountID string, req model.UpdateAccountReq) (model.Account, error) {
 	m.ctrl.T.Helper()

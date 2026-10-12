@@ -69,6 +69,25 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, toAccountResponse(a), http.StatusCreated)
 }
 
+func (h *Handler) SetOrder(w http.ResponseWriter, r *http.Request) {
+	var req accountOrderReq
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := req.validate(); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.service.SetOrder(r.Context(), middleware.UserIDFromCtx(r.Context()), req.AccountIDs); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	accountID := chi.URLParam(r, "accountID")
 	a, err := h.service.GetByID(r.Context(), accountID)

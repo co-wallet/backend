@@ -5,8 +5,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/co-wallet/backend/internal/model"
 )
+
+type accountOrderReq struct {
+	AccountIDs []string `json:"accountIds"`
+}
+
+func (r *accountOrderReq) validate() error {
+	if r.AccountIDs == nil {
+		return fmt.Errorf("accountIds is required")
+	}
+	seen := make(map[string]bool, len(r.AccountIDs))
+	for i, id := range r.AccountIDs {
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			return fmt.Errorf("accountIds must contain valid UUIDs")
+		}
+		id = parsed.String()
+		if seen[id] {
+			return fmt.Errorf("accountIds must be unique")
+		}
+		seen[id] = true
+		r.AccountIDs[i] = id
+	}
+	return nil
+}
 
 type createAccountReq struct {
 	Members            []addMemberReq          `json:"members"`
