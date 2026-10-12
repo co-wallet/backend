@@ -74,8 +74,8 @@ func (r *AccountRepository) GetByID(ctx context.Context, id string) (model.Accou
 	return r.getAccount(ctx, id, "")
 }
 
-// GetTransferDestination keeps acceptance stable until the transfer commits.
-func (r *AccountRepository) GetTransferDestination(ctx context.Context, id string) (model.Account, error) {
+// GetTransferAccount keeps external transfer availability stable until commit.
+func (r *AccountRepository) GetTransferAccount(ctx context.Context, id string) (model.Account, error) {
 	return r.getAccount(ctx, id, " FOR SHARE")
 }
 

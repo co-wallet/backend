@@ -26,7 +26,7 @@ type TransactionRepo interface {
 
 //go:generate mockgen -destination=mocks/mock_account_repo_tx.go -package=mocks github.com/co-wallet/backend/internal/service AccountRepoForTx
 type AccountRepoForTx interface {
-	GetTransferDestination(ctx context.Context, id string) (model.Account, error)
+	GetTransferAccount(ctx context.Context, id string) (model.Account, error)
 	GetByID(ctx context.Context, id string) (model.Account, error)
 	IsMember(ctx context.Context, accountID, userID string) (bool, error)
 }
@@ -65,7 +65,7 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 	if err != nil {
 		return model.Transaction{}, err
 	}
-	if !isMember {
+	if !isMember && req.Type != model.TransactionTypeTransfer {
 		return model.Transaction{}, fmt.Errorf("not a member of account: %w", apperr.ErrForbidden)
 	}
 
@@ -86,11 +86,16 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 	}
 
 	if tx.Type == model.TransactionTypeTransfer {
-		source, err := s.accounts.GetByID(ctx, tx.AccountID)
+		var source model.Account
+		if isMember {
+			source, err = s.accounts.GetByID(ctx, tx.AccountID)
+		} else {
+			source, err = s.accounts.GetTransferAccount(ctx, tx.AccountID)
+		}
 		if err != nil {
 			return model.Transaction{}, err
 		}
-		destination, err := s.accounts.GetTransferDestination(ctx, *tx.ToAccountID)
+		destination, err := s.accounts.GetTransferAccount(ctx, *tx.ToAccountID)
 		if err != nil {
 			return model.Transaction{}, err
 		}
@@ -98,10 +103,17 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		if err != nil {
 			return model.Transaction{}, err
 		}
-		if !member && (source.AccessMode == model.AccountAccessModeShared || destination.AccessMode == model.AccountAccessModeShared) {
+		if !isMember {
+			if !member || source.AccessMode != model.AccountAccessModePersonal || !source.AcceptTransfers {
+				return model.Transaction{}, fmt.Errorf("source unavailable: %w", apperr.ErrForbidden)
+			}
+			if req.Shares != nil || len(req.Tags) > 0 || req.CategoryID != nil || req.ExchangeRate != nil || req.DefaultCurrency != nil || req.DefaultCurrencyAmount != nil {
+				return model.Transaction{}, fmt.Errorf("external source metadata cannot be set: %w", apperr.ErrValidation)
+			}
+		} else if !member && (source.AccessMode == model.AccountAccessModeShared || destination.AccessMode == model.AccountAccessModeShared) {
 			return model.Transaction{}, fmt.Errorf("external transfers require personal source and destination accounts: %w", apperr.ErrForbidden)
 		}
-		if !member && !destination.AcceptTransfers {
+		if isMember && !member && !destination.AcceptTransfers {
 			return model.Transaction{}, fmt.Errorf("destination unavailable: %w", apperr.ErrForbidden)
 		}
 		if tx.Currency != source.Currency {
@@ -113,7 +125,11 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 		}
 	}
 
-	tx.Shares, err = s.resolveShares(ctx, req, userID)
+	if isMember {
+		tx.Shares, err = s.resolveShares(ctx, req, userID)
+	} else {
+		tx.Shares = []model.TransactionShare{{UserID: tx.Account.OwnerID, Amount: tx.Amount}}
+	}
 	if err != nil {
 		return model.Transaction{}, err
 	}
@@ -129,7 +145,8 @@ func (s *TransactionService) Create(ctx context.Context, userID string, req mode
 			return model.Transaction{}, err
 		}
 	}
-	return tx, nil
+	tx.ReadOnly = !isMember
+	return transferView(tx), nil
 }
 
 func (s *TransactionService) GetByID(ctx context.Context, userID, id string) (model.Transaction, error) {
@@ -240,7 +257,7 @@ func (s *TransactionService) Update(ctx context.Context, userID, id string, req 
 		if existing.ToAccountID == nil || *existing.ToAccountID == existing.AccountID {
 			return model.Transaction{}, fmt.Errorf("accounts must differ: %w", apperr.ErrValidation)
 		}
-		destination, err := s.accounts.GetTransferDestination(ctx, *existing.ToAccountID)
+		destination, err := s.accounts.GetTransferAccount(ctx, *existing.ToAccountID)
 		if err != nil {
 			return model.Transaction{}, err
 		}
