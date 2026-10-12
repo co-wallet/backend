@@ -28,7 +28,7 @@ func (r *AnalyticsRepository) transferTotals(ctx context.Context, f model.Analyt
 }
 
 // transferStats считает только переводы через границу выбранного набора.
-// Исходящая сумма — сохранённая доля пользователя; входящая — доля
+// Исходящая сумма — полная сумма или сохранённая доля пользователя; входящая — сумма или доля
 // зачисления в валюте получателя, как в расчёте баланса счёта.
 func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.AnalyticsFilter) ([]transferStat, error) {
 	args := []any{f.UserID}
@@ -39,8 +39,7 @@ func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.Analyti
 	query := fmt.Sprintf(`
         WITH selected_accounts AS (
             SELECT a.id, a.currency,
-                COALESCE((SELECT am.default_share FROM account_members am
-                    WHERE am.account_id = a.id AND am.user_id = $1), 1.0) AS share
+                %s AS share
             FROM accounts a
             WHERE a.deleted_at IS NULL
                 AND (a.owner_id = $1 OR EXISTS (SELECT 1 FROM account_members am
@@ -61,8 +60,8 @@ func (r *AnalyticsRepository) transferStats(ctx context.Context, f model.Analyti
             AND ((source.id IS NOT NULL) <> (destination.id IS NOT NULL))
             AND t.date >= $%d::date AND t.date <= $%d::date%s
         GROUP BY counterpart.id, counterpart.name`,
-		accountCond, kindCond,
-		convertExpr("COALESCE(ts.amount, 0)", "t.currency", idx),
+		analyticsShare(f.AmountMode, "a"), accountCond, kindCond,
+		convertExpr("COALESCE("+analyticsAmount(f.AmountMode)+", 0)", "t.currency", idx),
 		convertExpr("COALESCE(t.to_amount, t.amount) * destination.share", "destination.currency", idx),
 		idx+1, idx+2, txCond,
 	)

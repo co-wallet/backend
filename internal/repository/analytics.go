@@ -108,23 +108,46 @@ func convertExpr(amountExpr, fromCurrencyCol string, displayCurrencyIdx int) str
 		amountExpr, displayCurrencyIdx, fromCurrencyCol)
 }
 
+// analyticsAmount выбирает полную сумму или сохранённую долю без изменения доступа.
+func analyticsAmount(mode model.AmountMode) string {
+	if mode == model.AmountModeTotal {
+		return "t.amount"
+	}
+	return "ts.amount"
+}
+
+func analyticsShare(mode model.AmountMode, accountAlias string) string {
+	if mode == model.AmountModeTotal {
+		return "1.0"
+	}
+	return fmt.Sprintf(`COALESCE((SELECT am_me.default_share FROM account_members am_me
+		WHERE am_me.account_id = %s.id AND am_me.user_id = $1), 1.0)`, accountAlias)
+}
+
+func analyticsSharesJoin(mode model.AmountMode) string {
+	if mode == model.AmountModeTotal {
+		return ""
+	}
+	return "JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1"
+}
+
 // transactionAmountExpr отдаёт приоритет исходной и сохранённой суммам.
 // Для другой валюты используется текущий курс и историческая доля пользователя.
 // USD имеет курс 1; отсутствие положительного курса оставляет итог неполным.
-func transactionAmountExpr(displayCurrencyIdx int) string {
+func transactionAmountExpr(displayCurrencyIdx int, mode model.AmountMode) string {
 	return fmt.Sprintf(`CASE
-		WHEN t.currency = $%d THEN ts.amount
-		WHEN t.default_currency = $%d AND t.default_currency_amount IS NOT NULL
-			THEN t.default_currency_amount * ts.amount / NULLIF(t.amount, 0)
-		WHEN ts.amount = 0 THEN 0
-		ELSE ts.amount
-			* CASE WHEN $%d = 'USD' THEN 1 ELSE
+		WHEN t.currency = $%[1]d THEN %[2]s
+		WHEN t.default_currency = $%[1]d AND t.default_currency_amount IS NOT NULL
+			THEN t.default_currency_amount * %[2]s / NULLIF(t.amount, 0)
+		WHEN %[2]s = 0 THEN 0
+		ELSE %[2]s
+			* CASE WHEN $%[1]d = 'USD' THEN 1 ELSE
 				(SELECT rate FROM exchange_rates WHERE base_currency = 'USD'
-				 AND quote_currency = $%d AND rate > 0) END
+				 AND quote_currency = $%[1]d AND rate > 0) END
 			/ CASE WHEN t.currency = 'USD' THEN 1 ELSE
 				(SELECT rate FROM exchange_rates WHERE base_currency = 'USD'
 				 AND quote_currency = t.currency AND rate > 0) END
-		END`, displayCurrencyIdx, displayCurrencyIdx, displayCurrencyIdx, displayCurrencyIdx)
+		END`, displayCurrencyIdx, analyticsAmount(mode))
 }
 
 func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
@@ -146,11 +169,10 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		        a.id,
 		        a.currency,
 		        a.initial_balance
-		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
-		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
-		        + COALESCE(SUM(CASE WHEN t.type = 'income'   THEN ts.amount ELSE 0 END), 0)
-		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  THEN ts.amount ELSE 0 END), 0)
-		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' THEN ts.amount ELSE 0 END), 0)
+		            * %s
+		        + COALESCE(SUM(CASE WHEN t.type = 'income'   THEN %s ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'expense'  THEN %s ELSE 0 END), 0)
+		        - COALESCE(SUM(CASE WHEN t.type = 'transfer' THEN %s ELSE 0 END), 0)
 		        AS balance_native
 		    FROM accounts a
 		    LEFT JOIN transactions t ON t.account_id = a.id
@@ -166,8 +188,7 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		    SELECT
 		        a.id,
 		        COALESCE(SUM(COALESCE(t.to_amount, t.amount)), 0)
-		            * COALESCE((SELECT am_me.default_share FROM account_members am_me
-		                        WHERE am_me.account_id = a.id AND am_me.user_id = $1), 1.0)
+		            * %s
 		            AS amount
 		    FROM accounts a
 		    JOIN transactions t ON t.to_account_id = a.id AND t.type = 'transfer'
@@ -181,8 +202,13 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		SELECT COALESCE(SUM(%s), 0)
 		FROM account_balances ab
 		LEFT JOIN transfer_in ti ON ti.id = ab.id`,
+		analyticsShare(f.AmountMode, "a"),
+		analyticsAmount(f.AmountMode),
+		analyticsAmount(f.AmountMode),
+		analyticsAmount(f.AmountMode),
 		bAcctCond,
 		bKindCond,
+		analyticsShare(f.AmountMode, "a"),
 		bAcctCond,
 		bKindCond,
 		convertExpr("ab.balance_native + COALESCE(ti.amount, 0)", "ab.currency", dispIdx),
@@ -209,10 +235,10 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		SELECT
 		    COALESCE(SUM(CASE WHEN t.type = 'expense' THEN %s ELSE 0 END), 0) AS expenses,
 		    COALESCE(SUM(CASE WHEN t.type = 'income'  THEN %s ELSE 0 END), 0) AS income,
-		    COUNT(*) FILTER (WHERE t.type = 'expense' AND (%s) IS NULL AND ts.amount <> 0),
-		    COUNT(*) FILTER (WHERE t.type = 'income' AND (%s) IS NULL AND ts.amount <> 0)
+		    COUNT(*) FILTER (WHERE t.type = 'expense' AND (%s) IS NULL AND %s <> 0),
+		    COUNT(*) FILTER (WHERE t.type = 'income' AND (%s) IS NULL AND %s <> 0)
 		FROM transactions t
-		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
+		%s
 		JOIN accounts a ON a.id = t.account_id
 		WHERE (a.owner_id = $1 OR EXISTS (
 		          SELECT 1 FROM account_members am
@@ -221,10 +247,13 @@ func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilt
 		  AND t.date >= $%d::date
 		  AND t.date <= $%d::date
 		  AND t.type IN ('expense','income')`,
-		transactionAmountExpr(pDispIdx),
-		transactionAmountExpr(pDispIdx),
-		transactionAmountExpr(pDispIdx),
-		transactionAmountExpr(pDispIdx),
+		transactionAmountExpr(pDispIdx, f.AmountMode),
+		transactionAmountExpr(pDispIdx, f.AmountMode),
+		transactionAmountExpr(pDispIdx, f.AmountMode),
+		analyticsAmount(f.AmountMode),
+		transactionAmountExpr(pDispIdx, f.AmountMode),
+		analyticsAmount(f.AmountMode),
+		analyticsSharesJoin(f.AmountMode),
 		pAcctCond,
 		pKindCond,
 		pTxCond,
@@ -279,9 +308,9 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		    COALESCE(c.name, '%s') AS category_name,
 		    c.icon,
 		    COALESCE(SUM(%s), 0) AS amount,
-		    COUNT(*) FILTER (WHERE (%s) IS NULL AND ts.amount <> 0)
+		    COUNT(*) FILTER (WHERE (%s) IS NULL AND %s <> 0)
 		FROM transactions t
-		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
+		%s
 		JOIN accounts a ON a.id = t.account_id
 		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE (a.owner_id = $1 OR EXISTS (
@@ -295,8 +324,10 @@ func buildByCategoryQuery(f model.AnalyticsFilter) (string, []any) {
 		ORDER BY amount DESC`,
 		uncategorizedCategoryID,
 		uncategorizedCategoryName,
-		transactionAmountExpr(dispIdx),
-		transactionAmountExpr(dispIdx),
+		transactionAmountExpr(dispIdx, f.AmountMode),
+		transactionAmountExpr(dispIdx, f.AmountMode),
+		analyticsAmount(f.AmountMode),
+		analyticsSharesJoin(f.AmountMode),
 		acctCond,
 		kindCond,
 		txCond,
@@ -373,9 +404,9 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 
 	q := fmt.Sprintf(`
 		SELECT COALESCE(tg.id::text, '%s'), COALESCE(tg.name, '%s'), COALESCE(SUM(%s), 0) AS amount,
-		    COUNT(*) FILTER (WHERE (%s) IS NULL AND ts.amount <> 0)
+		    COUNT(*) FILTER (WHERE (%s) IS NULL AND %s <> 0)
 		FROM transactions t
-		JOIN transaction_shares ts ON ts.transaction_id = t.id AND ts.user_id = $1
+		%s
 		JOIN accounts a ON a.id = t.account_id
 		LEFT JOIN transaction_tags tt ON tt.transaction_id = t.id
 		LEFT JOIN tags tg ON tg.id = tt.tag_id
@@ -390,8 +421,10 @@ func (r *AnalyticsRepository) ByTag(ctx context.Context, f model.AnalyticsFilter
 		ORDER BY amount DESC`,
 		untaggedTagID,
 		untaggedTagName,
-		transactionAmountExpr(dispIdx),
-		transactionAmountExpr(dispIdx),
+		transactionAmountExpr(dispIdx, f.AmountMode),
+		transactionAmountExpr(dispIdx, f.AmountMode),
+		analyticsAmount(f.AmountMode),
+		analyticsSharesJoin(f.AmountMode),
 		acctCond,
 		kindCond,
 		txCond,
