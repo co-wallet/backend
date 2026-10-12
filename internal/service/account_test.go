@@ -237,6 +237,21 @@ func (s *AccountServiceSuite) TestTransferSearch() {
 	s.Len(accounts, 1)
 }
 
+func (s *AccountServiceSuite) TestAvailableTransferAccounts() {
+	expected := []model.TransferAccount{{ID: "open", OwnerUsername: "alice"}}
+	s.repo.EXPECT().ListAvailableTransferAccounts(gomock.Any(), "requester").Return(expected, nil)
+	accounts, err := s.svc.ListAvailableTransferAccounts(context.Background(), "requester")
+	s.NoError(err)
+	s.Equal(expected, accounts)
+}
+
+func (s *AccountServiceSuite) TestAvailableTransferAccountsError() {
+	failure := errors.New("database offline")
+	s.repo.EXPECT().ListAvailableTransferAccounts(gomock.Any(), "requester").Return(nil, failure)
+	_, err := s.svc.ListAvailableTransferAccounts(context.Background(), "requester")
+	s.ErrorIs(err, failure)
+}
+
 func (s *AccountServiceSuite) TestSharedAccountCannotEnableExternalTransfers() {
 	_, err := s.svc.CreateAccount(context.Background(), "owner", model.CreateAccountReq{AccessMode: model.AccountAccessModeShared, AcceptTransfers: true})
 	s.ErrorIs(err, apperr.ErrValidation)

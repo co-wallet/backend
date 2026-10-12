@@ -30,6 +30,11 @@ func TestTransferTopupAPI(t *testing.T) {
 	require.Len(t, choices, 1)
 	require.Len(t, choices[0], 4)
 	require.Equal(t, source.ID, choices[0]["id"])
+	importRequest(t, h, token, "GET", "/api/transfer-accounts", nil, 200, &choices)
+	require.Len(t, choices, 1)
+	require.Len(t, choices[0], 5)
+	require.Equal(t, "other", choices[0]["ownerUsername"])
+	importRequest(t, h, "", "GET", "/api/transfer-accounts", nil, 401, nil)
 	importRequest(t, h, token, "GET", "/api/accounts/"+source.ID, nil, 403, nil)
 	body := []byte(fmt.Sprintf(`{"accountId":%q,"toAccountId":%q,"type":"transfer","amount":12.3456,"currency":"USD","date":"2026-01-01T00:00:00Z"}`, source.ID, destination.ID))
 	var created transactionhandler.TransactionResponse
@@ -69,7 +74,10 @@ func TestTransferTopups(t *testing.T) {
 	hidden := create(f.other, "Hidden", "USD", false)
 	deleted := create(f.other, "Deleted", "USD", true)
 	require.NoError(t, accounts.SoftDelete(ctx, deleted.ID))
-	personal := create(f.user, "Personal", "USD", false)
+	// Legacy shared accounts with an enabled flag must stay outside the external catalog.
+	_, err := accounts.Create(ctx, model.Account{OwnerID: f.other, Name: "Legacy shared", Currency: "USD", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindSpending, AcceptTransfers: true, InitialBalanceDate: date})
+	require.NoError(t, err)
+	personal := create(f.user, "Personal", "USD", true)
 	shared, err := accountService.CreateAccount(ctx, f.user, model.CreateAccountReq{Name: "Shared", AccessMode: model.AccountAccessModeShared, Kind: model.AccountKindSpending, Currency: "EUR", InitialBalanceDate: date, Members: []model.CreateAccountMemberReq{{Username: "importer", DefaultShare: 0.25}, {Username: "other", DefaultShare: 0.75}}})
 	require.NoError(t, err)
 	_, err = f.pool.Exec(ctx, `INSERT INTO exchange_rates(base_currency,quote_currency,rate) VALUES('USD','EUR',0.8) ON CONFLICT(base_currency,quote_currency) DO UPDATE SET rate=EXCLUDED.rate`)
@@ -80,6 +88,9 @@ func TestTransferTopups(t *testing.T) {
 	choices, err = accounts.ListTransferAccounts(ctx, "oth")
 	require.NoError(t, err)
 	require.Empty(t, choices)
+	catalog, err := accounts.ListAvailableTransferAccounts(ctx, f.user)
+	require.NoError(t, err)
+	require.Equal(t, []model.TransferAccount{{ID: source.ID, Name: source.Name, Currency: "USD", OwnerUsername: "other"}}, catalog)
 	for _, destination := range []model.Account{personal, shared} {
 		t.Run(destination.Name, func(t *testing.T) {
 			req := model.CreateTransactionReq{AccountID: source.ID, ToAccountID: ptr.To(destination.ID), Type: model.TransactionTypeTransfer, Amount: 100.1234, Currency: "USD", Date: date, Description: ptr.To("Topup")}
@@ -154,4 +165,9 @@ func TestTransferTopups(t *testing.T) {
 	var remaining int
 	require.NoError(t, f.pool.QueryRow(ctx, `SELECT count(*) FROM transaction_shares`).Scan(&remaining))
 	require.Zero(t, remaining)
+	_, err = f.pool.Exec(ctx, `UPDATE users SET is_active=false WHERE id=$1`, f.other)
+	require.NoError(t, err)
+	catalog, err = accounts.ListAvailableTransferAccounts(ctx, f.user)
+	require.NoError(t, err)
+	require.Empty(t, catalog)
 }

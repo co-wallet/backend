@@ -19,6 +19,7 @@ import (
 //go:generate mockgen -source=account.go -destination=mocks/mock_account_repo.go -package=mocks
 
 type accountRepo interface {
+	ListAvailableTransferAccounts(ctx context.Context, requesterID string) ([]model.TransferAccount, error)
 	SetOrder(ctx context.Context, userID string, accountIDs []string) error
 	ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Account, error)
@@ -285,4 +286,8 @@ func (s *AccountService) ListTransferAccounts(ctx context.Context, username stri
 		return nil, fmt.Errorf("username is required: %w", apperr.ErrValidation)
 	}
 	return s.accounts.ListTransferAccounts(ctx, username)
+}
+
+func (s *AccountService) ListAvailableTransferAccounts(ctx context.Context, requesterID string) ([]model.TransferAccount, error) {
+	return s.accounts.ListAvailableTransferAccounts(ctx, requesterID)
 }

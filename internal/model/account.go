@@ -91,10 +91,11 @@ type UpdateAccountReq struct {
 	InitialBalanceDate *time.Time // nil = don't update
 }
 
-// TransferAccount contains only the information needed to choose a destination.
+// TransferAccount contains only the information needed to choose a source or destination.
 type TransferAccount struct {
-	ID       string
-	Name     string
-	Icon     *string
-	Currency string
+	OwnerUsername string
+	ID            string
+	Name          string
+	Icon          *string
+	Currency      string
 }

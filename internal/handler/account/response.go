@@ -75,8 +75,9 @@ func toMemberResponses(members []model.AccountMember) []MemberResponse {
 }
 
 type TransferAccountResponse struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Icon     *string `json:"icon"`
-	Currency string  `json:"currency"`
+	OwnerUsername string  `json:"ownerUsername,omitempty"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Icon          *string `json:"icon"`
+	Currency      string  `json:"currency"`
 }

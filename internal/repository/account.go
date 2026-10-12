@@ -293,3 +293,25 @@ func (r *AccountRepository) ListTransferAccounts(ctx context.Context, username s
 	}
 	return result, rows.Err()
 }
+
+// ListAvailableTransferAccounts exposes only enabled personal accounts of other active users.
+func (r *AccountRepository) ListAvailableTransferAccounts(ctx context.Context, requesterID string) ([]model.TransferAccount, error) {
+	rows, err := r.db.Query(ctx, `SELECT a.id, a.name, a.icon, a.currency, u.username
+		FROM accounts a JOIN users u ON u.id = a.owner_id
+		WHERE a.owner_id <> $1 AND u.is_active AND a.accept_transfers
+		  AND a.access_mode = 'personal' AND a.deleted_at IS NULL
+		ORDER BY u.username, a.name, a.id`, requesterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []model.TransferAccount{}
+	for rows.Next() {
+		var a model.TransferAccount
+		if err := rows.Scan(&a.ID, &a.Name, &a.Icon, &a.Currency, &a.OwnerUsername); err != nil {
+			return nil, err
+		}
+		result = append(result, a)
+	}
+	return result, rows.Err()
+}
