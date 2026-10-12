@@ -2,6 +2,17 @@ package model
 
 import "time"
 
+type AmountMode string
+
+const (
+	AmountModeShare AmountMode = "share"
+	AmountModeTotal AmountMode = "total"
+)
+
+func (m AmountMode) IsValid() bool {
+	return m == AmountModeShare || m == AmountModeTotal
+}
+
 type AnalyticsSummary struct {
 	ExpensesMissingAmounts int
 	IncomeMissingAmounts   int
@@ -26,6 +37,7 @@ type TagStat struct {
 }
 
 type AnalyticsFilter struct {
+	AmountMode              AmountMode
 	IncludeTransferExpenses bool
 	IncludeTransferIncome   bool
 	UserID                  string

@@ -16,6 +16,7 @@ const dateLayout = "2006-01-02"
 
 // filterParams представляет валидированные query-параметры эндпоинтов аналитики.
 type filterParams struct {
+	AmountMode              model.AmountMode
 	IncludeTransferExpenses bool
 	IncludeTransferIncome   bool
 	DateFrom                time.Time
@@ -35,8 +36,17 @@ type filterParams struct {
 // дефолтами вызывающей стороной (currency из профиля пользователя).
 func parseFilterParams(q url.Values) (filterParams, error) {
 	p := filterParams{
+		AmountMode:   model.AmountModeShare,
 		AccountKinds: []model.AccountKind{model.AccountKindSpending},
 		TagMode:      "or",
+	}
+
+	if q.Has("amount_mode") {
+		mode := model.AmountMode(strings.TrimSpace(q.Get("amount_mode")))
+		if !mode.IsValid() {
+			return filterParams{}, fmt.Errorf("amount_mode must be 'share' or 'total'")
+		}
+		p.AmountMode = mode
 	}
 
 	for key, target := range map[string]*bool{
@@ -150,6 +160,7 @@ func (p filterParams) toFilter(userID, defaultCurrency string) model.AnalyticsFi
 		currency = defaultCurrency
 	}
 	return model.AnalyticsFilter{
+		AmountMode:              p.AmountMode,
 		UserID:                  userID,
 		IncludeTransferExpenses: p.IncludeTransferExpenses,
 		IncludeTransferIncome:   p.IncludeTransferIncome,

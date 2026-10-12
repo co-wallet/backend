@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -141,6 +142,51 @@ func TestDashboardTransfers(t *testing.T) {
 				} else {
 					require.Zero(t, toggled.Income)
 				}
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name            string
+		ids             []string
+		expense, income float64
+	}{
+		{"all", nil, 10, 60},
+		{"source", []string{spending}, 110, 110},
+		{"destination", []string{deposit}, 40, 80},
+		{"both", []string{spending, deposit}, 10, 60},
+		{"inaccessible", []string{external}, 0, 0},
+	} {
+		t.Run("total/"+tc.name, func(t *testing.T) {
+			f := base
+			f.AmountMode = model.AmountModeTotal
+			f.AccountIDs = tc.ids
+			summary, err := analytics.Summary(ctx, f)
+			require.NoError(t, err)
+			require.Equal(t, tc.expense, summary.Expenses)
+			require.Equal(t, tc.income, summary.Income)
+			balances, err := repository.NewAccountRepository(pool).ListBalancesByUser(ctx, user, "USD")
+			require.NoError(t, err)
+			var balance float64
+			for id, b := range balances {
+				if tc.ids == nil || slices.Contains(tc.ids, id) {
+					balance += b.TotalDisplay
+				}
+			}
+			require.InDelta(t, balance, summary.Balance, 1e-8)
+			for _, stat := range []struct {
+				kind model.TransactionType
+				want float64
+			}{
+				{model.TransactionTypeExpense, tc.expense}, {model.TransactionTypeIncome, tc.income},
+			} {
+				f.TxType = stat.kind
+				categories, err := analytics.ByCategory(ctx, f)
+				require.NoError(t, err)
+				var amount float64
+				for _, category := range categories {
+					amount += category.Amount
+				}
+				require.Equal(t, stat.want, amount)
 			}
 		})
 	}

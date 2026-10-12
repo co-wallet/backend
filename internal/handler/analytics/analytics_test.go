@@ -159,3 +159,50 @@ func (s *AnalyticsHandlerSuite) TestSummary_InvalidTransferFlags() {
 		s.Equal(http.StatusBadRequest, rec.Code)
 	}
 }
+
+func (s *AnalyticsHandlerSuite) TestAmountModes() {
+	for _, endpoint := range []string{"summary", "by-category", "by-tag"} {
+		for _, mode := range []string{"", "share", "total", "family", "empty"} {
+			s.Run(endpoint+"/"+mode, func() {
+				query := "/api/analytics/" + endpoint + "?currency=USD"
+				if mode != "" {
+					if mode == "empty" {
+						query += "&amount_mode="
+					} else {
+						query += "&amount_mode=" + mode
+					}
+				}
+				if mode != "family" && mode != "empty" {
+					want := model.AmountModeShare
+					if mode == "total" {
+						want = model.AmountModeTotal
+					}
+					match := gomock.Cond(func(f model.AnalyticsFilter) bool { return f.AmountMode == want })
+					switch endpoint {
+					case "summary":
+						s.svc.EXPECT().Summary(gomock.Any(), match).Return(model.AnalyticsSummary{}, nil)
+					case "by-category":
+						s.svc.EXPECT().ByCategory(gomock.Any(), match).Return([]model.CategoryStat{}, nil)
+					case "by-tag":
+						s.svc.EXPECT().ByTag(gomock.Any(), match).Return([]model.TagStat{}, nil)
+					}
+				}
+				rec := httptest.NewRecorder()
+				req := withUser(httptest.NewRequest(http.MethodGet, query, nil), "u1")
+				switch endpoint {
+				case "summary":
+					s.h.Summary(rec, req)
+				case "by-category":
+					s.h.ByCategory(rec, req)
+				case "by-tag":
+					s.h.ByTag(rec, req)
+				}
+				if mode == "family" || mode == "empty" {
+					s.Equal(http.StatusBadRequest, rec.Code)
+				} else {
+					s.Equal(http.StatusOK, rec.Code)
+				}
+			})
+		}
+	}
+}
