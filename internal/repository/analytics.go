@@ -108,14 +108,23 @@ func convertExpr(amountExpr, fromCurrencyCol string, displayCurrencyIdx int) str
 		amountExpr, displayCurrencyIdx, fromCurrencyCol)
 }
 
-// transactionAmountExpr использует сохранённую стоимость операции и историческую
-// долю пользователя. Остатки счетов по-прежнему оцениваются отдельно.
+// transactionAmountExpr отдаёт приоритет исходной и сохранённой суммам.
+// Для другой валюты используется текущий курс и историческая доля пользователя.
+// USD имеет курс 1; отсутствие положительного курса оставляет итог неполным.
 func transactionAmountExpr(displayCurrencyIdx int) string {
 	return fmt.Sprintf(`CASE
 		WHEN t.currency = $%d THEN ts.amount
 		WHEN t.default_currency = $%d AND t.default_currency_amount IS NOT NULL
 			THEN t.default_currency_amount * ts.amount / NULLIF(t.amount, 0)
-		ELSE NULL END`, displayCurrencyIdx, displayCurrencyIdx)
+		WHEN ts.amount = 0 THEN 0
+		ELSE ts.amount
+			* CASE WHEN $%d = 'USD' THEN 1 ELSE
+				(SELECT rate FROM exchange_rates WHERE base_currency = 'USD'
+				 AND quote_currency = $%d AND rate > 0) END
+			/ CASE WHEN t.currency = 'USD' THEN 1 ELSE
+				(SELECT rate FROM exchange_rates WHERE base_currency = 'USD'
+				 AND quote_currency = t.currency AND rate > 0) END
+		END`, displayCurrencyIdx, displayCurrencyIdx, displayCurrencyIdx, displayCurrencyIdx)
 }
 
 func (r *AnalyticsRepository) Summary(ctx context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
