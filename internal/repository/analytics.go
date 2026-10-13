@@ -59,7 +59,7 @@ func accountKindFilter(kinds []model.AccountKind, args []any, idx int) (string, 
 func transactionFilter(f model.AnalyticsFilter, args []any, idx int) (string, []any, int) {
 	var condition strings.Builder
 	if f.WithoutCategory {
-		condition.WriteString(" AND t.category_id IS NULL")
+		condition.WriteString(" AND t.category_id IS NULL AND t.type <> 'transfer'")
 	}
 	if len(f.CategoryIDs) > 0 {
 		fmt.Fprintf(&condition, " AND t.category_id = ANY($%d)", idx)

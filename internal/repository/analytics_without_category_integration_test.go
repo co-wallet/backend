@@ -66,13 +66,24 @@ func TestTransactionsWithoutCategory(t *testing.T) {
 		require.NoError(t, pool.QueryRow(ctx, `INSERT INTO transactions(account_id,type,amount,currency,date,created_by,category_id) VALUES ($1,$2,$3,'USD',$4,$5,$6) RETURNING id`, account, tx.kind, tx.amount, today, user, tx.category).Scan(&id))
 		exec(`INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES ($1,$2,$3)`, id, user, tx.amount)
 	}
+	var destination, transferID string
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO accounts(owner_id,name,currency,kind,access_mode,initial_balance_date) VALUES ($1,'Destination','USD','spending','personal',CURRENT_DATE) RETURNING id`, other).Scan(&destination))
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO transactions(account_id,to_account_id,type,amount,currency,date,created_by) VALUES ($1,$2,'transfer',999,'USD',$3,$4) RETURNING id`, account, destination, today, user).Scan(&transferID))
+	exec(`INSERT INTO transaction_shares(transaction_id,user_id,amount) VALUES ($1,$2,999)`, transferID, user)
 	list := repository.NewTransactionRepository(pool)
+	all, err := list.List(ctx, user, model.TransactionFilter{Page: 1, Limit: 50})
+	require.NoError(t, err)
+	require.Len(t, all, 4)
 	txs, err := list.List(ctx, user, model.TransactionFilter{WithoutCategory: true, Page: 1, Limit: 50})
 	require.NoError(t, err)
 	require.Len(t, txs, 2)
 	for _, tx := range txs {
 		require.Nil(t, tx.CategoryID)
+		require.NotEqual(t, model.TransactionTypeTransfer, tx.Type)
 	}
+	transfers, err := list.List(ctx, user, model.TransactionFilter{WithoutCategory: true, Types: []model.TransactionType{model.TransactionTypeTransfer}, Page: 1, Limit: 50})
+	require.NoError(t, err)
+	require.Empty(t, transfers)
 	filtered, err := list.List(ctx, user, model.TransactionFilter{WithoutCategory: true, Types: []model.TransactionType{model.TransactionTypeIncome}, Page: 1, Limit: 50})
 	require.NoError(t, err)
 	require.Len(t, filtered, 1)
@@ -82,6 +93,8 @@ func TestTransactionsWithoutCategory(t *testing.T) {
 	require.Empty(t, forbidden)
 	analytics := repository.NewAnalyticsRepository(pool)
 	f := model.AnalyticsFilter{UserID: user, DisplayCurrency: "USD", DateFrom: today.AddDate(0, 0, -1), DateTo: today.AddDate(0, 0, 1), WithoutCategory: true}
+	f.IncludeTransferExpenses = true
+	f.IncludeTransferIncome = true
 	summary, err := analytics.Summary(ctx, f)
 	require.NoError(t, err)
 	require.Equal(t, 10.0, summary.Expenses)
