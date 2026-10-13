@@ -8,6 +8,8 @@ import (
 	"github.com/co-wallet/backend/internal/service"
 )
 
+//go:generate mockgen -source=handler.go -destination=mocks/mock_auth_service.go -package=mocks
+
 type authService interface {
 	Login(ctx context.Context, email, password string) (model.User, service.TokenPair, error)
 	Refresh(ctx context.Context, refreshToken string) (service.TokenPair, error)
@@ -16,7 +18,7 @@ type authService interface {
 type userService interface {
 	GetByID(ctx context.Context, id string) (model.User, error)
 	ListActive(ctx context.Context) ([]model.User, error)
-	UpdateCurrency(ctx context.Context, id, currency string) (model.User, error)
+	UpdateProfile(ctx context.Context, id string, req service.UpdateProfileReq) (model.User, error)
 }
 
 type Handler struct {

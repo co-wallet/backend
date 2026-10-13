@@ -16,6 +16,7 @@ import (
 	"github.com/co-wallet/backend/internal/handler/auth/mocks"
 	"github.com/co-wallet/backend/internal/middleware"
 	"github.com/co-wallet/backend/internal/model"
+	"github.com/co-wallet/backend/internal/ptr"
 	"github.com/co-wallet/backend/internal/service"
 )
 
@@ -151,7 +152,7 @@ func (s *AuthHandlerSuite) TestListUsers_Error() {
 func (s *AuthHandlerSuite) TestUpdateMe_Success() {
 	ctx := context.WithValue(context.Background(), middleware.ContextUserID, "u1")
 	s.userSvc.EXPECT().
-		UpdateCurrency(gomock.Any(), "u1", "EUR").
+		UpdateProfile(gomock.Any(), "u1", service.UpdateProfileReq{DefaultCurrency: ptr.To("EUR")}).
 		Return(model.User{ID: "u1", DefaultCurrency: "EUR"}, nil)
 
 	req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"defaultCurrency":"EUR"}`)).WithContext(ctx)
@@ -171,11 +172,33 @@ func (s *AuthHandlerSuite) TestUpdateMe_InvalidJSON() {
 func (s *AuthHandlerSuite) TestUpdateMe_ValidationError() {
 	ctx := context.WithValue(context.Background(), middleware.ContextUserID, "u1")
 	s.userSvc.EXPECT().
-		UpdateCurrency(gomock.Any(), "u1", "bad").
+		UpdateProfile(gomock.Any(), "u1", service.UpdateProfileReq{DefaultCurrency: ptr.To("bad")}).
 		Return(model.User{}, apperr.ErrValidation)
 
 	req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"defaultCurrency":"bad"}`)).WithContext(ctx)
 	rec := httptest.NewRecorder()
 	s.h.UpdateMe(rec, req)
 	s.Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *AuthHandlerSuite) TestUpdateMe_ProfileFieldsAndSafeResponse() {
+	ctx := context.WithValue(context.Background(), middleware.ContextUserID, "u1")
+	s.userSvc.EXPECT().UpdateProfile(gomock.Any(), "u1", service.UpdateProfileReq{
+		Username: ptr.To("alice"), Email: ptr.To("a@test.com"), CurrentPassword: "old-password", NewPassword: ptr.To("new-password"),
+	}).Return(model.User{ID: "u1", Username: "alice", Email: "a@test.com", PasswordHash: "secret-hash"}, nil)
+	req := httptest.NewRequest(http.MethodPatch, "/users/me", strings.NewReader(`{"username":"alice","email":"a@test.com","currentPassword":"old-password","newPassword":"new-password","id":"other","isAdmin":true}`)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	s.h.UpdateMe(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+	s.Contains(rec.Body.String(), `"username":"alice"`)
+	s.NotContains(rec.Body.String(), "secret-hash")
+	s.NotContains(rec.Body.String(), "password")
+}
+func (s *AuthHandlerSuite) TestUpdateMe_Conflict() {
+	ctx := context.WithValue(context.Background(), middleware.ContextUserID, "u1")
+	s.userSvc.EXPECT().UpdateProfile(gomock.Any(), "u1", gomock.Any()).Return(model.User{}, apperr.ErrConflict)
+	req := httptest.NewRequest(http.MethodPatch, "/users/me", strings.NewReader(`{"username":"taken"}`)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	s.h.UpdateMe(rec, req)
+	s.Equal(http.StatusConflict, rec.Code)
 }

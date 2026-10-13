@@ -8,6 +8,13 @@ type AdminUserPatch struct {
 	PasswordHash *string
 }
 
+type UserProfilePatch struct {
+	Username        *string
+	Email           *string
+	PasswordHash    *string
+	DefaultCurrency *string
+}
+
 type User struct {
 	ID              string
 	Username        string
