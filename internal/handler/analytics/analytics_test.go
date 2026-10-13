@@ -80,6 +80,7 @@ func (s *AnalyticsHandlerSuite) TestSummary_ForwardsTransactionFilters() {
 		Summary(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, f model.AnalyticsFilter) (model.AnalyticsSummary, error) {
 			s.Equal([]string{categoryID}, f.CategoryIDs)
+			s.True(f.WithoutCategory)
 			s.Equal([]string{tagID}, f.TagIDs)
 			s.Equal("and", f.TagMode)
 			return model.AnalyticsSummary{}, nil
@@ -87,7 +88,7 @@ func (s *AnalyticsHandlerSuite) TestSummary_ForwardsTransactionFilters() {
 
 	req := withUser(httptest.NewRequest(
 		http.MethodGet,
-		"/analytics/summary?category_ids="+categoryID+"&tag_ids="+tagID+"&tag_mode=and&currency=RUB",
+		"/analytics/summary?category_ids="+categoryID+"&tag_ids="+tagID+"&tag_mode=and&currency=RUB&without_category=true",
 		nil,
 	), "u1")
 	rec := httptest.NewRecorder()

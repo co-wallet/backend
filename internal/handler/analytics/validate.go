@@ -27,6 +27,7 @@ type filterParams struct {
 	TagIDs                  []string
 	TagMode                 string
 	WithoutTags             bool
+	WithoutCategory         bool
 	Currency                string
 	TxType                  model.TransactionType
 }
@@ -53,6 +54,7 @@ func parseFilterParams(q url.Values) (filterParams, error) {
 		"include_transfer_expenses": &p.IncludeTransferExpenses,
 		"include_transfer_income":   &p.IncludeTransferIncome,
 		"without_tags":              &p.WithoutTags,
+		"without_category":          &p.WithoutCategory,
 	} {
 		if q.Has(key) {
 			value, err := strconv.ParseBool(q.Get(key))
@@ -172,6 +174,7 @@ func (p filterParams) toFilter(userID, defaultCurrency string) model.AnalyticsFi
 		TagIDs:                  p.TagIDs,
 		TagMode:                 p.TagMode,
 		WithoutTags:             p.WithoutTags,
+		WithoutCategory:         p.WithoutCategory,
 		DisplayCurrency:         currency,
 		TxType:                  p.TxType,
 	}

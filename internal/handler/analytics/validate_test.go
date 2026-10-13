@@ -36,16 +36,17 @@ func TestParseFilterParams(t *testing.T) {
 		{
 			name: "valid full payload",
 			query: url.Values{
-				"date_from":     {"2026-01-01"},
-				"date_to":       {"2026-01-31"},
-				"account_ids":   {validUUID + "," + validUUID},
-				"account_kinds": {"spending,investment,spending"},
-				"category_ids":  {validUUID},
-				"tag_ids":       {validUUID + "," + secondUUID},
-				"tag_mode":      {"and"},
-				"without_tags":  {"true"},
-				"currency":      {"eur"},
-				"type":          {"income"},
+				"date_from":        {"2026-01-01"},
+				"date_to":          {"2026-01-31"},
+				"account_ids":      {validUUID + "," + validUUID},
+				"account_kinds":    {"spending,investment,spending"},
+				"category_ids":     {validUUID},
+				"tag_ids":          {validUUID + "," + secondUUID},
+				"tag_mode":         {"and"},
+				"without_tags":     {"true"},
+				"without_category": {"true"},
+				"currency":         {"eur"},
+				"type":             {"income"},
 			},
 			check: func(t *testing.T, p filterParams) {
 				assert.Equal(t, "2026-01-01", p.DateFrom.Format(dateLayout))
@@ -56,6 +57,7 @@ func TestParseFilterParams(t *testing.T) {
 				assert.Equal(t, []string{validUUID, secondUUID}, p.TagIDs)
 				assert.Equal(t, "and", p.TagMode)
 				assert.True(t, p.WithoutTags)
+				assert.True(t, p.WithoutCategory)
 				assert.Equal(t, "EUR", p.Currency)
 				assert.Equal(t, model.TransactionTypeIncome, p.TxType)
 			},
@@ -184,9 +186,9 @@ func TestFilterParams_ToFilter(t *testing.T) {
 			CategoryIDs: []string{"category-1"},
 			TagIDs:      []string{"tag-1"},
 			TagMode:     "and",
-			WithoutTags: true,
-			Currency:    "EUR",
-			TxType:      model.TransactionTypeExpense,
+			WithoutTags: true, WithoutCategory: true,
+			Currency: "EUR",
+			TxType:   model.TransactionTypeExpense,
 		}
 		f := p.toFilter("user-1", "USD")
 		assert.Equal(t, "EUR", f.DisplayCurrency)
