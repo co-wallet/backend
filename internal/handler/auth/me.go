@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/co-wallet/backend/internal/middleware"
+	"github.com/co-wallet/backend/internal/service"
 )
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +38,10 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := middleware.UserIDFromCtx(r.Context())
-	u, err := h.users.UpdateCurrency(r.Context(), userID, req.DefaultCurrency)
+	u, err := h.users.UpdateProfile(r.Context(), userID, service.UpdateProfileReq{
+		Username: req.Username, Email: req.Email, DefaultCurrency: req.DefaultCurrency,
+		NewPassword: req.NewPassword, CurrentPassword: req.CurrentPassword,
+	})
 	if err != nil {
 		handleServiceError(w, err)
 		return

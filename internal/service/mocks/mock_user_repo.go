@@ -114,3 +114,18 @@ func (mr *MockUserRepoMockRecorder) UpdateCurrency(ctx, id, currency any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCurrency", reflect.TypeOf((*MockUserRepo)(nil).UpdateCurrency), ctx, id, currency)
 }
+
+// UpdateProfile mocks base method.
+func (m *MockUserRepo) UpdateProfile(ctx context.Context, id string, patch model.UserProfilePatch, expectedHash string) (model.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateProfile", ctx, id, patch, expectedHash)
+	ret0, _ := ret[0].(model.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateProfile indicates an expected call of UpdateProfile.
+func (mr *MockUserRepoMockRecorder) UpdateProfile(ctx, id, patch, expectedHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockUserRepo)(nil).UpdateProfile), ctx, id, patch, expectedHash)
+}

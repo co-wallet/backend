@@ -28,5 +28,9 @@ func (r *refreshReq) validate() error {
 }
 
 type updateMeReq struct {
-	DefaultCurrency string `json:"defaultCurrency"`
+	DefaultCurrency *string `json:"defaultCurrency"`
+	Username        *string `json:"username"`
+	Email           *string `json:"email"`
+	NewPassword     *string `json:"newPassword"`
+	CurrentPassword string  `json:"currentPassword"`
 }

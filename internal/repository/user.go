@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/co-wallet/backend/internal/apperr"
@@ -107,4 +108,21 @@ func (r *UserRepository) scanOne(ctx context.Context, query string, args ...any)
 		return model.User{}, err
 	}
 	return u, nil
+}
+
+func (r *UserRepository) UpdateProfile(ctx context.Context, id string, patch model.UserProfilePatch, expectedHash string) (model.User, error) {
+	user, err := r.scanOne(ctx, `UPDATE users SET
+ username = COALESCE($2, username), email = COALESCE($3, email),
+ password_hash = COALESCE($4, password_hash), default_currency = COALESCE($5, default_currency), updated_at = now()
+ WHERE id = $1 AND is_active = true AND ($6 = '' OR password_hash = $6)
+ RETURNING id, username, email, password_hash, default_currency, is_admin, is_active, created_at, updated_at`,
+		id, patch.Username, patch.Email, patch.PasswordHash, patch.DefaultCurrency, expectedHash)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return model.User{}, fmt.Errorf("%w: имя или почта уже заняты", apperr.ErrConflict)
+	}
+	if expectedHash != "" && errors.Is(err, apperr.ErrNotFound) {
+		return model.User{}, fmt.Errorf("%w: профиль изменился, обновите страницу и повторите", apperr.ErrConflict)
+	}
+	return user, err
 }
