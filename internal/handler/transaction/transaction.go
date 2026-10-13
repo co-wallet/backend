@@ -42,6 +42,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if mode := r.URL.Query().Get("tag_mode"); mode == "and" {
 		f.TagMode = "and"
 	}
+	if withoutCategory, err := strconv.ParseBool(r.URL.Query().Get("without_category")); err == nil {
+		f.WithoutCategory = withoutCategory
+	}
 	if withoutTags, err := strconv.ParseBool(r.URL.Query().Get("without_tags")); err == nil {
 		f.WithoutTags = withoutTags
 	}

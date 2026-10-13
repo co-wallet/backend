@@ -83,14 +83,15 @@ type ShareReq struct {
 }
 
 type TransactionFilter struct {
-	AccountIDs  []string
-	Types       []TransactionType
-	CategoryIDs []string
-	TagIDs      []string
-	TagMode     string // "or" (default) or "and"
-	WithoutTags bool
-	DateFrom    *time.Time
-	DateTo      *time.Time
-	Page        int
-	Limit       int
+	AccountIDs      []string
+	Types           []TransactionType
+	CategoryIDs     []string
+	TagIDs          []string
+	TagMode         string // "or" (default) or "and"
+	WithoutCategory bool
+	WithoutTags     bool
+	DateFrom        *time.Time
+	DateTo          *time.Time
+	Page            int
+	Limit           int
 }
