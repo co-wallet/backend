@@ -56,19 +56,19 @@ func (mr *MockAccountRepoForTxMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockAccountRepoForTx)(nil).GetByID), ctx, id)
 }
 
-// GetTransferDestination mocks base method.
-func (m *MockAccountRepoForTx) GetTransferDestination(ctx context.Context, id string) (model.Account, error) {
+// GetTransferAccount mocks base method.
+func (m *MockAccountRepoForTx) GetTransferAccount(ctx context.Context, id string) (model.Account, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransferDestination", ctx, id)
+	ret := m.ctrl.Call(m, "GetTransferAccount", ctx, id)
 	ret0, _ := ret[0].(model.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetTransferDestination indicates an expected call of GetTransferDestination.
-func (mr *MockAccountRepoForTxMockRecorder) GetTransferDestination(ctx, id any) *gomock.Call {
+// GetTransferAccount indicates an expected call of GetTransferAccount.
+func (mr *MockAccountRepoForTxMockRecorder) GetTransferAccount(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransferDestination", reflect.TypeOf((*MockAccountRepoForTx)(nil).GetTransferDestination), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransferAccount", reflect.TypeOf((*MockAccountRepoForTx)(nil).GetTransferAccount), ctx, id)
 }
 
 // IsMember mocks base method.

@@ -155,14 +155,20 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) TransferAccounts(w http.ResponseWriter, r *http.Request) {
-	accounts, err := h.service.ListTransferAccounts(r.Context(), r.URL.Query().Get("username"))
+	var accounts []model.TransferAccount
+	var err error
+	if r.URL.Query().Has("username") {
+		accounts, err = h.service.ListTransferAccounts(r.Context(), r.URL.Query().Get("username"))
+	} else {
+		accounts, err = h.service.ListAvailableTransferAccounts(r.Context(), middleware.UserIDFromCtx(r.Context()))
+	}
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 	result := make([]TransferAccountResponse, len(accounts))
 	for i, a := range accounts {
-		result[i] = TransferAccountResponse{ID: a.ID, Name: a.Name, Icon: a.Icon, Currency: a.Currency}
+		result[i] = TransferAccountResponse{ID: a.ID, Name: a.Name, Icon: a.Icon, Currency: a.Currency, OwnerUsername: a.OwnerUsername}
 	}
 	jsonResponse(w, result, http.StatusOK)
 }

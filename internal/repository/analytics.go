@@ -374,6 +374,9 @@ func (r *AnalyticsRepository) ByCategory(ctx context.Context, f model.AnalyticsF
 			if f.TxType == model.TransactionTypeIncome {
 				amount, name = stat.Incoming, "Из '"+stat.AccountName+"'"
 			}
+			if stat.OwnerUsername != "" {
+				name += " · @" + stat.OwnerUsername
+			}
 			if amount != 0 {
 				result = append(result, model.CategoryStat{CategoryID: "transfers:" + stat.AccountID, CategoryName: name, Amount: amount})
 			}

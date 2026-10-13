@@ -47,6 +47,7 @@ func (f *importFixture) api(t *testing.T) (http.Handler, string) {
 	r.Post("/api/imports/monefy/{previewID}/options", h.Configure)
 	r.Post("/api/imports/monefy/{previewID}/confirm", h.Confirm)
 	r.Get("/api/accounts", a.List)
+	r.Get("/api/transfer-accounts", a.TransferAccounts)
 	r.Post("/api/accounts", a.Create)
 	r.Patch("/api/accounts/order", a.SetOrder)
 	r.Route("/api/accounts/{accountID}", func(r chi.Router) {
@@ -60,7 +61,10 @@ func (f *importFixture) api(t *testing.T) (http.Handler, string) {
 	})
 	r.Get("/api/categories", c.List)
 	r.Get("/api/transactions", tx.List)
+	r.Post("/api/transactions", tx.Create)
 	r.Get("/api/transactions/{transactionID}", tx.Get)
+	r.Patch("/api/transactions/{transactionID}", tx.Update)
+	r.Delete("/api/transactions/{transactionID}", tx.Delete)
 	return r, tokens.AccessToken
 }
 

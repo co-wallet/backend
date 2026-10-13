@@ -10,6 +10,7 @@ import (
 //go:generate mockgen -source=handler.go -destination=mocks/mock_account_service.go -package=mocks
 
 type accountService interface {
+	ListAvailableTransferAccounts(ctx context.Context, requesterID string) ([]model.TransferAccount, error)
 	SetOrder(ctx context.Context, userID string, accountIDs []string) error
 	ListTransferAccounts(ctx context.Context, username string) ([]model.TransferAccount, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Account, error)

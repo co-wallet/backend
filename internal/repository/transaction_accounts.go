@@ -27,10 +27,10 @@ func (r *TransactionRepository) populateAccounts(ctx context.Context, transactio
 		}
 	}
 	rows, err := r.db.Query(ctx, `
-  SELECT id, owner_id, name, access_mode, kind, currency, icon,
-         initial_balance, initial_balance_date, accept_transfers,
-         deleted_at, created_at, updated_at
-  FROM accounts WHERE id = ANY($1)`, ids)
+  SELECT a.id, a.owner_id, a.name, a.access_mode, a.kind, a.currency, a.icon,
+         a.initial_balance, a.initial_balance_date, a.accept_transfers,
+         a.deleted_at, a.created_at, a.updated_at, u.username
+  FROM accounts a JOIN users u ON u.id = a.owner_id WHERE a.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("load transaction accounts: %w", err)
 	}
@@ -40,7 +40,7 @@ func (r *TransactionRepository) populateAccounts(ctx context.Context, transactio
 		var account model.Account
 		if err := rows.Scan(&account.ID, &account.OwnerID, &account.Name, &account.AccessMode, &account.Kind,
 			&account.Currency, &account.Icon, &account.InitialBalance, &account.InitialBalanceDate,
-			&account.AcceptTransfers, &account.DeletedAt, &account.CreatedAt, &account.UpdatedAt); err != nil {
+			&account.AcceptTransfers, &account.DeletedAt, &account.CreatedAt, &account.UpdatedAt, &account.OwnerUsername); err != nil {
 			return nil, err
 		}
 		accounts[account.ID] = account

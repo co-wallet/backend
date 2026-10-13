@@ -322,6 +322,21 @@ func (s *AccountHandlerSuite) TestTransferAccounts_MinimalResponse() {
 	s.JSONEq(`[{"id":"a","name":"Receiving","icon":null,"currency":"EUR"}]`, rec.Body.String())
 }
 
+func (s *AccountHandlerSuite) TestTransferAccounts_Catalog() {
+	s.svc.EXPECT().ListAvailableTransferAccounts(gomock.Any(), "requester").Return([]model.TransferAccount{{ID: "a", Name: "Available", Currency: "USD", OwnerUsername: "alice"}}, nil)
+	rec := httptest.NewRecorder()
+	s.h.TransferAccounts(rec, withUser(httptest.NewRequest(http.MethodGet, "/transfer-accounts", nil), "requester"))
+	s.Equal(http.StatusOK, rec.Code)
+	s.JSONEq(`[{"id":"a","name":"Available","icon":null,"currency":"USD","ownerUsername":"alice"}]`, rec.Body.String())
+}
+
+func (s *AccountHandlerSuite) TestTransferAccounts_CatalogError() {
+	s.svc.EXPECT().ListAvailableTransferAccounts(gomock.Any(), "requester").Return(nil, errors.New("database offline"))
+	rec := httptest.NewRecorder()
+	s.h.TransferAccounts(rec, withUser(httptest.NewRequest(http.MethodGet, "/transfer-accounts", nil), "requester"))
+	s.Equal(http.StatusInternalServerError, rec.Code)
+}
+
 func (s *AccountHandlerSuite) TestCreate_AllKinds() {
 	for _, kind := range []model.AccountKind{model.AccountKindSpending, model.AccountKindSavings, model.AccountKindDeposit, model.AccountKindSavingsAccount, model.AccountKindInvestment} {
 		s.Run(string(kind), func() {

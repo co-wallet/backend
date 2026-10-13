@@ -529,7 +529,7 @@ func (s *TransactionServiceSuite) TestCreate_TransferDestinations() {
 			ctx := context.Background()
 			s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
 			s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{ID: "source", Currency: "USD", AccessMode: tc.sourceMode}, nil)
-			s.accountRepo.EXPECT().GetTransferDestination(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled, AccessMode: tc.destinationMode}, nil)
+			s.accountRepo.EXPECT().GetTransferAccount(ctx, "dest").Return(model.Account{ID: "dest", OwnerID: "recipient", Currency: tc.currency, AcceptTransfers: tc.enabled, AccessMode: tc.destinationMode}, nil)
 			s.accountRepo.EXPECT().IsMember(ctx, "dest", "sender").Return(tc.member, nil)
 			if tc.want == nil {
 				s.repo.EXPECT().GetMemberDefaults(ctx, "source").Return(nil, nil)
@@ -551,9 +551,88 @@ func (s *TransactionServiceSuite) TestCreate_DeletedDestination() {
 	ctx := context.Background()
 	s.accountRepo.EXPECT().IsMember(ctx, "source", "sender").Return(true, nil)
 	s.accountRepo.EXPECT().GetByID(ctx, "source").Return(model.Account{Currency: "USD"}, nil)
-	s.accountRepo.EXPECT().GetTransferDestination(ctx, "gone").Return(model.Account{}, apperr.ErrNotFound)
+	s.accountRepo.EXPECT().GetTransferAccount(ctx, "gone").Return(model.Account{}, apperr.ErrNotFound)
 	_, err := s.svc.Create(ctx, "sender", model.CreateTransactionReq{AccountID: "source", ToAccountID: ptr.To("gone"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", Date: time.Now()})
 	s.ErrorIs(err, apperr.ErrNotFound)
+}
+
+func (s *TransactionServiceSuite) TestCreate_ExternalSource() {
+	for _, tc := range []struct {
+		name        string
+		source      model.Account
+		destination model.Account
+		member      bool
+		modify      func(*model.CreateTransactionReq)
+		want        error
+	}{
+		{name: "personal destination", member: true},
+		{name: "shared destination", member: true, destination: model.Account{AccessMode: model.AccountAccessModeShared}},
+		{name: "disabled source", member: true, source: model.Account{AccessMode: model.AccountAccessModePersonal}, want: apperr.ErrForbidden},
+		{name: "shared source", member: true, source: model.Account{AccessMode: model.AccountAccessModeShared, AcceptTransfers: true}, want: apperr.ErrForbidden},
+		{name: "foreign destination", want: apperr.ErrForbidden},
+		{name: "wrong currency", member: true, modify: func(r *model.CreateTransactionReq) { r.Currency = "RUB" }, want: apperr.ErrValidation},
+		{name: "missing converted amount", member: true, modify: func(r *model.CreateTransactionReq) { r.ToAmount = nil }, want: apperr.ErrValidation},
+		{name: "custom shares", member: true, modify: func(r *model.CreateTransactionReq) { r.Shares = []model.ShareReq{{UserID: "recipient", Amount: 100}} }, want: apperr.ErrValidation},
+		{name: "private tags", member: true, modify: func(r *model.CreateTransactionReq) { r.Tags = []string{"injected"} }, want: apperr.ErrValidation},
+		{name: "private category", member: true, modify: func(r *model.CreateTransactionReq) { r.CategoryID = ptr.To("category") }, want: apperr.ErrValidation},
+		{name: "private base amount", member: true, modify: func(r *model.CreateTransactionReq) { r.DefaultCurrencyAmount = ptr.To(100.0) }, want: apperr.ErrValidation},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			ctx := context.Background()
+			source := tc.source
+			if source.AccessMode == "" {
+				source = model.Account{AccessMode: model.AccountAccessModePersonal, AcceptTransfers: true}
+			}
+			source.ID, source.OwnerID, source.Currency = "source", "owner", "USD"
+			destination := tc.destination
+			destination.ID, destination.Currency = "dest", "EUR"
+			req := model.CreateTransactionReq{AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", ToAmount: ptr.To(90.0), Date: time.Now()}
+			if tc.modify != nil {
+				tc.modify(&req)
+			}
+			s.accountRepo.EXPECT().IsMember(ctx, "source", "recipient").Return(false, nil)
+			s.accountRepo.EXPECT().GetTransferAccount(ctx, "source").Return(source, nil)
+			s.accountRepo.EXPECT().GetTransferAccount(ctx, "dest").Return(destination, nil)
+			s.accountRepo.EXPECT().IsMember(ctx, "dest", "recipient").Return(tc.member, nil)
+			if tc.want == nil {
+				s.repo.EXPECT().Create(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
+					s.Equal("recipient", tx.CreatedBy)
+					s.Equal([]model.TransactionShare{{UserID: "owner", Amount: 100}}, tx.Shares)
+					return tx, nil
+				})
+			}
+			created, err := s.svc.Create(ctx, "recipient", req)
+			if tc.want == nil {
+				s.NoError(err)
+				s.True(created.ReadOnly)
+				s.Empty(created.Shares)
+			} else {
+				s.ErrorIs(err, tc.want)
+			}
+		})
+	}
+}
+
+func (s *TransactionServiceSuite) TestCreate_ExternalSourceLookupErrors() {
+	for _, failure := range []error{apperr.ErrNotFound, errors.New("database offline")} {
+		s.Run(failure.Error(), func() {
+			s.SetupTest()
+			ctx := context.Background()
+			s.accountRepo.EXPECT().IsMember(ctx, "source", "recipient").Return(false, nil)
+			s.accountRepo.EXPECT().GetTransferAccount(ctx, "source").Return(model.Account{}, failure)
+			_, err := s.svc.Create(ctx, "recipient", model.CreateTransactionReq{AccountID: "source", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", Date: time.Now()})
+			s.ErrorIs(err, failure)
+		})
+	}
+}
+
+func (s *TransactionServiceSuite) TestDelete_ExternallyCreatedTransferOwner() {
+	ctx := context.Background()
+	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "source", CreatedBy: "recipient", ToAccountID: ptr.To("dest"), Type: model.TransactionTypeTransfer}, nil)
+	s.accountRepo.EXPECT().IsMember(ctx, "source", "owner").Return(true, nil)
+	s.repo.EXPECT().Delete(ctx, "tx").Return(nil)
+	s.NoError(s.svc.Delete(ctx, "owner", "tx"))
 }
 func (s *TransactionServiceSuite) TestTransferRecipientCannotMutate() {
 	ctx := context.Background()
@@ -661,7 +740,7 @@ func (s *TransactionServiceSuite) TestUpdate_Transfer_NewDestination() {
 	ctx := context.Background()
 	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeTransfer, Amount: 100, Currency: "USD", ToAccountID: ptr.To("dest"), AccountTo: &model.Account{Currency: "USD"}}, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
-	s.accountRepo.EXPECT().GetTransferDestination(ctx, "new").Return(model.Account{ID: "new", Currency: "EUR"}, nil)
+	s.accountRepo.EXPECT().GetTransferAccount(ctx, "new").Return(model.Account{ID: "new", Currency: "EUR"}, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(true, nil)
 	s.repo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, tx model.Transaction) (model.Transaction, error) {
 		s.Equal("new", *tx.ToAccountID)
@@ -677,7 +756,7 @@ func (s *TransactionServiceSuite) TestUpdate_Transfer_ExternalDestinationDisable
 	ctx := context.Background()
 	s.repo.EXPECT().GetByID(ctx, "tx").Return(model.Transaction{ID: "tx", AccountID: "old", Type: model.TransactionTypeTransfer, ToAccountID: ptr.To("dest")}, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "old", "editor").Return(true, nil)
-	s.accountRepo.EXPECT().GetTransferDestination(ctx, "new").Return(model.Account{ID: "new"}, nil)
+	s.accountRepo.EXPECT().GetTransferAccount(ctx, "new").Return(model.Account{ID: "new"}, nil)
 	s.accountRepo.EXPECT().IsMember(ctx, "new", "editor").Return(false, nil)
 	_, err := s.svc.Update(ctx, "editor", "tx", model.UpdateTransactionReq{ToAccountID: ptr.To("new")})
 	s.ErrorIs(err, apperr.ErrForbidden)

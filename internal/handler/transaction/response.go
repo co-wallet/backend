@@ -18,27 +18,29 @@ type TagResponse struct {
 }
 
 type TransactionResponse struct {
-	AccountName           string          `json:"accountName"`
-	ToAccountName         string          `json:"toAccountName"`
-	ToCurrency            string          `json:"toCurrency"`
-	ReadOnly              bool            `json:"readOnly"`
-	ID                    string          `json:"id"`
-	AccountID             string          `json:"accountId"`
-	ToAccountID           *string         `json:"toAccountId"`
-	ToAmount              *float64        `json:"toAmount"`
-	Type                  string          `json:"type"`
-	Amount                float64         `json:"amount"`
-	Currency              string          `json:"currency"`
-	ExchangeRate          *float64        `json:"exchangeRate"`
-	DefaultCurrency       *string         `json:"defaultCurrency"`
-	DefaultCurrencyAmount *float64        `json:"defaultCurrencyAmount"`
-	CategoryID            *string         `json:"categoryId"`
-	Description           *string         `json:"description"`
-	Date                  time.Time       `json:"date"`
-	CreatedBy             string          `json:"createdBy"`
-	CreatedAt             time.Time       `json:"createdAt"`
-	Shares                []ShareResponse `json:"shares"`
-	Tags                  []TagResponse   `json:"tags"`
+	AccountOwnerUsername   string          `json:"accountOwnerUsername,omitempty"`
+	ToAccountOwnerUsername string          `json:"toAccountOwnerUsername,omitempty"`
+	AccountName            string          `json:"accountName"`
+	ToAccountName          string          `json:"toAccountName"`
+	ToCurrency             string          `json:"toCurrency"`
+	ReadOnly               bool            `json:"readOnly"`
+	ID                     string          `json:"id"`
+	AccountID              string          `json:"accountId"`
+	ToAccountID            *string         `json:"toAccountId"`
+	ToAmount               *float64        `json:"toAmount"`
+	Type                   string          `json:"type"`
+	Amount                 float64         `json:"amount"`
+	Currency               string          `json:"currency"`
+	ExchangeRate           *float64        `json:"exchangeRate"`
+	DefaultCurrency        *string         `json:"defaultCurrency"`
+	DefaultCurrencyAmount  *float64        `json:"defaultCurrencyAmount"`
+	CategoryID             *string         `json:"categoryId"`
+	Description            *string         `json:"description"`
+	Date                   time.Time       `json:"date"`
+	CreatedBy              string          `json:"createdBy"`
+	CreatedAt              time.Time       `json:"createdAt"`
+	Shares                 []ShareResponse `json:"shares"`
+	Tags                   []TagResponse   `json:"tags"`
 }
 
 func toTransactionResponse(tx model.Transaction) TransactionResponse {
@@ -50,31 +52,34 @@ func toTransactionResponse(tx model.Transaction) TransactionResponse {
 	for i, t := range tx.Tags {
 		tags[i] = TagResponse{ID: t.ID, Name: t.Name}
 	}
-	toAccountName, toCurrency := "", ""
+	toAccountName, toCurrency, toAccountOwnerUsername := "", "", ""
 	if tx.AccountTo != nil {
 		toAccountName, toCurrency = tx.AccountTo.Name, tx.AccountTo.Currency
+		toAccountOwnerUsername = tx.AccountTo.OwnerUsername
 	}
 	return TransactionResponse{
-		ID:                    tx.ID,
-		AccountName:           tx.Account.Name,
-		ToAccountName:         toAccountName,
-		ToCurrency:            toCurrency,
-		ReadOnly:              tx.ReadOnly,
-		AccountID:             tx.AccountID,
-		ToAccountID:           tx.ToAccountID,
-		ToAmount:              tx.ToAmount,
-		Type:                  string(tx.Type),
-		Amount:                tx.Amount,
-		Currency:              tx.Currency,
-		ExchangeRate:          tx.ExchangeRate,
-		DefaultCurrency:       tx.DefaultCurrency,
-		DefaultCurrencyAmount: tx.DefaultCurrencyAmount,
-		CategoryID:            tx.CategoryID,
-		Description:           tx.Description,
-		Date:                  tx.Date,
-		CreatedBy:             tx.CreatedBy,
-		CreatedAt:             tx.CreatedAt,
-		Shares:                shares,
-		Tags:                  tags,
+		AccountOwnerUsername:   tx.Account.OwnerUsername,
+		ToAccountOwnerUsername: toAccountOwnerUsername,
+		ID:                     tx.ID,
+		AccountName:            tx.Account.Name,
+		ToAccountName:          toAccountName,
+		ToCurrency:             toCurrency,
+		ReadOnly:               tx.ReadOnly,
+		AccountID:              tx.AccountID,
+		ToAccountID:            tx.ToAccountID,
+		ToAmount:               tx.ToAmount,
+		Type:                   string(tx.Type),
+		Amount:                 tx.Amount,
+		Currency:               tx.Currency,
+		ExchangeRate:           tx.ExchangeRate,
+		DefaultCurrency:        tx.DefaultCurrency,
+		DefaultCurrencyAmount:  tx.DefaultCurrencyAmount,
+		CategoryID:             tx.CategoryID,
+		Description:            tx.Description,
+		Date:                   tx.Date,
+		CreatedBy:              tx.CreatedBy,
+		CreatedAt:              tx.CreatedAt,
+		Shares:                 shares,
+		Tags:                   tags,
 	}
 }
